@@ -4,3 +4,6 @@ Thumbs.db
 node_modules/
 .env
 .env.local
+
+# Source image (kept locally for re-generation; not needed in deploy)
+icon-source.png
