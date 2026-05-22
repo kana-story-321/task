@@ -1,30 +1,92 @@
 /**
- * Google Calendar → My Task 取込用 GAS
+ * Google Calendar + データ同期 → My Task 用 GAS
  *
  * 【エンドポイント】
- *   ?action=list                       → 利用可能なカレンダー一覧を返す
- *   ?days=7&calendarIds=primary,xxx@x  → 指定カレンダーから予定取得
+ *   GET  ?action=list                       → カレンダー一覧
+ *   GET  ?days=7&calendarIds=primary,xxx    → カレンダーから予定取得
+ *   GET  ?action=load                       → 保存データの取得（クラウド → 端末）
+ *   POST {"action":"save","data":{...}}     → 保存データの書込（端末 → クラウド）
  *
  * 【デプロイ】
  *   - ウェブアプリとしてデプロイ
  *   - 実行ユーザー: 自分
- *   - アクセスできるユーザー: 全員（URL を知る人のみアクセス可能）
+ *   - アクセスできるユーザー: 全員（URLを知る人のみアクセス可能）
+ *
+ * 【データ保存先】
+ *   あなたの Google Drive に `mytask-data.json` を自動作成して保存します。
+ *   削除した場合は次回保存時に再作成されます。
  */
 
-const DEFAULTS = {
-  daysAhead: 7,
-};
+const DEFAULTS = { daysAhead: 7 };
+const DATA_FILE_NAME = 'mytask-data.json';
 
 function doGet(e) {
   try {
     const params = (e && e.parameter) || {};
-    if (params.action === 'list') {
-      return listCalendars();
-    }
+    if (params.action === 'list') return listCalendars();
+    if (params.action === 'load') return loadData();
     return getEvents(params);
   } catch (err) {
     return json({ ok: false, error: String(err && err.message || err) });
   }
+}
+
+function doPost(e) {
+  try {
+    const body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    if (body.action === 'save') return saveData(body);
+    if (body.action === 'load') return loadData();
+    return json({ ok: false, error: 'unknown action: ' + body.action });
+  } catch (err) {
+    return json({ ok: false, error: String(err && err.message || err) });
+  }
+}
+
+/* ─── データ保存（Driveの JSON ファイル） ───────────── */
+function _getDataFile() {
+  const props = PropertiesService.getScriptProperties();
+  let fileId = props.getProperty('DATA_FILE_ID');
+  if (fileId) {
+    try {
+      const f = DriveApp.getFileById(fileId);
+      if (!f.isTrashed()) return f;
+    } catch (_) {}
+  }
+  const file = DriveApp.createFile(
+    DATA_FILE_NAME,
+    JSON.stringify({ _meta: { lastModified: 0, createdAt: new Date().toISOString() } }),
+    MimeType.PLAIN_TEXT
+  );
+  props.setProperty('DATA_FILE_ID', file.getId());
+  return file;
+}
+
+function loadData() {
+  const file = _getDataFile();
+  const content = file.getBlob().getDataAsString('UTF-8') || '{}';
+  let data;
+  try { data = JSON.parse(content); } catch (_) { data = {}; }
+  return json({
+    ok: true,
+    data: data,
+    lastModified: (data && data._meta && data._meta.lastModified) || 0,
+    fileId: file.getId(),
+  });
+}
+
+function saveData(body) {
+  const file = _getDataFile();
+  const data = body.data || {};
+  if (!data._meta) data._meta = {};
+  data._meta.lastModified = Number(data._meta.lastModified) || Date.now();
+  data._meta.savedAt = new Date().toISOString();
+  file.setContent(JSON.stringify(data));
+  return json({
+    ok: true,
+    savedAt: data._meta.savedAt,
+    lastModified: data._meta.lastModified,
+    bytes: JSON.stringify(data).length,
+  });
 }
 
 /* ─── カレンダー一覧 ─────────────────────── */
@@ -39,7 +101,6 @@ function listCalendars() {
     isDefault: c.getId() === defId,
     color: safe(() => c.getColor(), ''),
   }));
-  // 既定カレンダーを先頭に
   list.sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0));
   return json({ ok: true, calendars: list, defaultId: defId });
 }
@@ -115,7 +176,6 @@ function getEvents(params) {
     });
   });
 
-  // 開始時刻順にソート
   all.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
 
   return json({
@@ -138,12 +198,7 @@ function safe(fn, fallback) {
   try { return fn(); } catch (_) { return fallback; }
 }
 
-/* ─── 動作確認用 (GASエディタで実行) ─── */
-function _test_list() {
-  const out = doGet({ parameter: { action: 'list' } });
-  Logger.log(out.getContent());
-}
-function _test_events() {
-  const out = doGet({ parameter: { days: 7 } });
-  Logger.log(out.getContent());
-}
+/* ─── 動作確認 ─────────── */
+function _test_list()   { Logger.log(doGet({ parameter: { action: 'list' } }).getContent()); }
+function _test_events() { Logger.log(doGet({ parameter: { days: 7 } }).getContent()); }
+function _test_load()   { Logger.log(doGet({ parameter: { action: 'load' } }).getContent()); }
