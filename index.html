@@ -218,6 +218,11 @@
   .task .chip.prj { background: #e8f0fa; color: var(--brand-2); }
   .task .chip.today { background: #fff4e0; color: #e67e22; }
   .task .chip.due-soon { background: #fde8e8; color: var(--danger); }
+  .task .chip.due       { background: #eef1f5; color: var(--ink-2); border: 1px solid var(--line); }
+  .task .chip.due.due-week  { background: #fff8e6; color: #b8770a; border-color: #f5d76e; }
+  .task .chip.due.due-soon  { background: #fff0e0; color: #e67e22; border-color: #ffc999; }
+  .task .chip.due.due-today { background: #ffeae0; color: #d04a02; border-color: #ffb088; font-weight: 800; }
+  .task .chip.due.due-over  { background: #fde8e8; color: var(--danger); border-color: #f3b6b6; font-weight: 800; }
   .task .chip.partner { background: #fef3e0; color: #b8770a; }
 
   .task .actions {
@@ -456,8 +461,14 @@
   .quick-add button {
     padding: 0 16px; border: none; border-radius: 10px;
     background: var(--brand); color: white; font-weight: 700; cursor: pointer;
-    font-size: 14px;
+    font-size: 16px; min-width: 46px;
   }
+  .quick-add button.qa-secondary {
+    background: var(--card); color: var(--ink-2);
+    border: 1px solid var(--line); font-size: 16px;
+    min-width: 46px;
+  }
+  .quick-add button.qa-secondary:hover { background: var(--line-2); }
 
   /* ─── Misc ─ */
   .help {
@@ -595,7 +606,9 @@
   <div id="page-tasks" class="page">
     <form class="quick-add" id="quickAddForm">
       <input type="text" id="quickAddInput" placeholder="タスクを入力して Enter（例: 提案資料の修正）">
-      <button type="submit">追加</button>
+      <button type="submit" title="クイック追加">＋</button>
+      <button type="button" id="btnAddDetailed" class="qa-secondary" title="詳細入力">📝</button>
+      <button type="button" id="btnImportCsv" class="qa-secondary" title="CSV取込">📥</button>
     </form>
 
     <div class="pills" id="taskFilter">
@@ -828,6 +841,42 @@
   </div>
 </div>
 
+<!-- ─────── MODAL: CSV Import ─────── -->
+<div class="modal-bg" id="modalCsv">
+  <div class="modal" style="max-width:680px">
+    <h3>📥 CSV でタスクを一括取込</h3>
+
+    <div class="help" style="margin-bottom:10px; line-height:1.7">
+      <b>ヘッダ行（1行目）に項目名</b>を入れてください。順番は自由・列の追加もOK・不要な列は省略可。<br>
+      認識する項目名: <span class="kbd">タイトル</span> <span class="kbd">ステータス</span>
+      <span class="kbd">期日</span> <span class="kbd">案件</span>
+      <span class="kbd">相手先</span> <span class="kbd">今日</span> <span class="kbd">メモ</span>
+      <br>
+      ステータス候補: <span class="kbd">マイボール</span> <span class="kbd">相手待ち</span>
+      <span class="kbd">早くやりたい</span> <span class="kbd">アイディア</span> <span class="kbd">完了</span>（英語コード mine/theirs/soon/idea/done でも可）
+    </div>
+
+    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px">
+      <button class="btn sm" id="btnDownloadCsvTemplate" type="button">📄 サンプルCSVをダウンロード</button>
+      <button class="btn sm" id="btnPickCsvFile" type="button">📁 CSVファイルを選択</button>
+      <input type="file" id="csvFileInput" accept=".csv,text/csv" style="display:none">
+    </div>
+
+    <div class="field">
+      <label>または、CSV を直接貼り付け</label>
+      <textarea id="csvPasteArea" rows="6" style="font-family:'Menlo',monospace; font-size:12px" placeholder="タイトル,ステータス,期日,案件,相手先,今日,メモ&#10;提案資料修正,マイボール,2026-05-25,新サービス導入PJ,,はい,要レビュー"></textarea>
+      <button class="btn sm" id="btnParseCsv" type="button" style="margin-top:6px">🔍 プレビュー</button>
+    </div>
+
+    <div id="csvPreview" style="margin-top:10px"></div>
+
+    <div class="modal-foot">
+      <button class="btn" data-close>キャンセル</button>
+      <button class="btn primary" id="btnConfirmImport" disabled>確認: 一括追加</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─────── MODAL: Follow-up (催促) ─────── -->
 <div class="modal-bg" id="modalFollowup">
   <div class="modal">
@@ -929,6 +978,13 @@
             <label><input type="checkbox" id="gasAutoSync"> 起動時に自動同期</label>
           </div>
         </div>
+        <div class="field">
+          <label>📌 取込対象のカレンダー</label>
+          <div id="calendarPicker" style="border:1px solid var(--line); border-radius:8px; padding:8px; max-height:180px; overflow-y:auto; background:var(--line-2)">
+            <div class="empty" style="margin:0">「↻ カレンダー一覧を取得」を押してください</div>
+          </div>
+          <button class="btn sm" id="btnLoadCalendars" type="button" style="margin-top:6px">↻ カレンダー一覧を取得</button>
+        </div>
         <div style="display:flex; gap:6px; flex-wrap:wrap">
           <button class="btn sm primary" id="btnSyncCalendar" type="button">📅 今すぐ取り込む</button>
           <span id="gasStatus" style="font-size:11px; color:var(--ink-3); align-self:center"></span>
@@ -1020,6 +1076,8 @@ function defaultState() {
       gasDays: 7,
       gasAutoSync: false,
       gasLastSync: '',
+      gasCalendarIds: [],   // 取込対象のカレンダーID配列
+      gasCalendarList: [],  // 直近取得したカレンダー一覧（キャッシュ）
     },
     taskFilter: 'all',
     taskSort: 'default',
@@ -1226,17 +1284,17 @@ function toggleToday(id) {
 
 function renderTaskCard(t) {
   const proj = state.projects.find(p => p.id === t.projectId);
-  const dueY = ymd(today());
   let dueChip = '';
   if (t.dueDate) {
     const dd = parseYmd(t.dueDate);
     const diff = daysBetween(today(), dd);
-    let cls = '';
-    let label = fmtJpDate(t.dueDate);
-    if (diff < 0)       { cls = 'due-soon'; label = '期限超過 ' + label; }
-    else if (diff === 0){ cls = 'due-soon'; label = '今日まで'; }
-    else if (diff <= 3) { cls = 'due-soon'; label = `あと${diff}日`; }
-    dueChip = `<span class="chip ${cls}">📆 ${esc(label)}</span>`;
+    let cls = '', icon = '📆', sub = '';
+    if (diff < 0)        { cls = 'due-over'; icon = '⚠'; sub = `${-diff}日 経過`; }
+    else if (diff === 0) { cls = 'due-today'; icon = '🔥'; sub = '今日'; }
+    else if (diff <= 3)  { cls = 'due-soon'; icon = '⏰'; sub = `あと${diff}日`; }
+    else if (diff <= 7)  { cls = 'due-week'; icon = '📆'; sub = `あと${diff}日`; }
+    else                 { cls = ''; icon = '📆'; sub = `あと${diff}日`; }
+    dueChip = `<span class="chip due ${cls}" title="期日 ${esc(fmtJpDate(t.dueDate))}">${icon} ${esc(fmtJpDate(t.dueDate))} <b style="opacity:0.85">${sub}</b></span>`;
   }
   const partnerChip = t.partner
     ? `<span class="chip partner">👤 ${esc(t.partner)}</span>` : '';
@@ -1863,6 +1921,246 @@ $('#quickAddForm').addEventListener('submit', (e) => {
   $('#quickAddInput').value = '';
 });
 
+$('#btnAddDetailed').addEventListener('click', () => {
+  // タイトル欄に入力中なら、その内容をモーダルに引き継ぐ
+  const title = $('#quickAddInput').value.trim();
+  openTaskModal(newTask({ title }));
+  $('#quickAddInput').value = '';
+});
+
+$('#btnImportCsv').addEventListener('click', () => openCsvModal());
+
+/* ──────────────────────────────────────────────────────────
+ * CSV IMPORT
+ * ────────────────────────────────────────────────────────── */
+const CSV_SAMPLE =
+`タイトル,ステータス,期日,案件,相手先,今日,メモ
+提案資料の修正,マイボール,2026-05-25,新サービス導入PJ,,はい,要レビュー
+見積もり回答待ち,相手待ち,2026-05-23,新サービス導入PJ,◯◯商事 山田様,,担当へ確認連絡済
+新人研修の構成案,早くやりたい,,,,,
+業務効率化アイディア,アイディア,,,,,DXツールの選定`;
+
+// 1行をパース（クォート対応の単純CSVパーサ）
+function parseCsv(text) {
+  const rows = [];
+  // BOM除去
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  // 改行統一
+  text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  let row = [], field = '', inQuote = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuote) {
+      if (c === '"') {
+        if (text[i+1] === '"') { field += '"'; i++; }
+        else inQuote = false;
+      } else field += c;
+    } else {
+      if (c === '"') inQuote = true;
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      else field += c;
+    }
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.length && !(r.length === 1 && r[0].trim() === ''));
+}
+
+// ヘッダ名 → タスクフィールドのマッピング
+const HEADER_MAP = {
+  'タイトル': 'title', '内容': 'title', '件名': 'title', 'タスク': 'title', 'title': 'title',
+  'ステータス': 'status', '状態': 'status', 'status': 'status',
+  '期日': 'dueDate', '期限': 'dueDate', '締切': 'dueDate', 'due': 'dueDate', 'duedate': 'dueDate',
+  '案件': 'projectName', 'プロジェクト': 'projectName', 'project': 'projectName',
+  '相手先': 'partner', '相手': 'partner', 'partner': 'partner',
+  '今日': 'isToday', '今日やる': 'isToday', 'today': 'isToday',
+  'メモ': 'notes', '備考': 'notes', 'notes': 'notes',
+};
+
+const STATUS_MAP = {
+  'mine': 'mine', 'マイボール': 'mine', 'マイボール対応中': 'mine', '自分': 'mine', '自分のボール': 'mine', '対応中': 'mine', 'M': 'mine',
+  'theirs': 'theirs', '相手待ち': 'theirs', '相手ボール': 'theirs', '返事待ち': 'theirs', '相手': 'theirs', 'T': 'theirs', '待ち': 'theirs',
+  'soon': 'soon', '早くやりたい': 'soon', '早く': 'soon', 'soon': 'soon', '優先': 'soon', '未着手': 'soon',
+  'idea': 'idea', 'アイディア': 'idea', 'アイデア': 'idea', 'いつか': 'idea', 'someday': 'idea',
+  'done': 'done', '完了': 'done', '✓': 'done', '済': 'done',
+};
+
+const BOOL_TRUE = new Set(['1', 'true', 'yes', 'y', 'はい', 'true', 'TRUE', '○', '◯', 'on']);
+
+function normDate(s) {
+  if (!s) return '';
+  s = String(s).trim();
+  // YYYY/MM/DD, YYYY-MM-DD, YYYY.MM.DD, etc → YYYY-MM-DD
+  const m = s.match(/^(\d{4})[\/\-\.年](\d{1,2})[\/\-\.月](\d{1,2})/);
+  if (m) {
+    const y = m[1], mo = String(m[2]).padStart(2,'0'), d = String(m[3]).padStart(2,'0');
+    return `${y}-${mo}-${d}`;
+  }
+  // M/D or MM/DD → このYYYY
+  const m2 = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})$/);
+  if (m2) {
+    const y = today().getFullYear();
+    return `${y}-${String(m2[1]).padStart(2,'0')}-${String(m2[2]).padStart(2,'0')}`;
+  }
+  return s; // パースできなければそのまま
+}
+
+function csvRowsToTasks(rows) {
+  if (rows.length < 2) return { tasks: [], errors: ['ヘッダ行とデータ行が必要です'] };
+  const header = rows[0].map(h => (h || '').trim());
+  const colMap = header.map(h => HEADER_MAP[h] || HEADER_MAP[h.toLowerCase()] || null);
+
+  if (!colMap.includes('title')) {
+    return { tasks: [], errors: ['「タイトル」列が見つかりません'] };
+  }
+
+  const tasks = [];
+  const errors = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r.length || (r.length === 1 && !r[0].trim())) continue;
+    const obj = {};
+    colMap.forEach((field, j) => {
+      if (!field) return;
+      obj[field] = (r[j] || '').trim();
+    });
+    if (!obj.title) { errors.push(`${i+1}行目: タイトル空白でスキップ`); continue; }
+
+    // status
+    const rawStatus = (obj.status || '').trim();
+    const status = STATUS_MAP[rawStatus] || STATUS_MAP[rawStatus.toLowerCase()] || 'mine';
+
+    // project
+    let projectId = '';
+    if (obj.projectName) {
+      const found = state.projects.find(p => p.name === obj.projectName);
+      if (found) projectId = found.id;
+      else errors.push(`${i+1}行目: 案件「${obj.projectName}」が見つかりません (なし扱い)`);
+    }
+
+    tasks.push(newTask({
+      title: obj.title,
+      status: status,
+      dueDate: normDate(obj.dueDate || ''),
+      projectId,
+      partner: obj.partner || '',
+      isToday: BOOL_TRUE.has(String(obj.isToday || '').trim()),
+      notes: obj.notes || '',
+    }));
+  }
+  return { tasks, errors };
+}
+
+let _csvPendingTasks = [];
+
+function openCsvModal() {
+  $('#csvPasteArea').value = '';
+  $('#csvPreview').innerHTML = '';
+  $('#btnConfirmImport').disabled = true;
+  _csvPendingTasks = [];
+  openModal('modalCsv');
+}
+
+function previewCsv(text) {
+  if (!text.trim()) {
+    $('#csvPreview').innerHTML = `<div class="empty">CSVを貼り付けるか、ファイルを選択してください</div>`;
+    $('#btnConfirmImport').disabled = true;
+    return;
+  }
+  const rows = parseCsv(text);
+  const { tasks, errors } = csvRowsToTasks(rows);
+  _csvPendingTasks = tasks;
+
+  const errHtml = errors.length
+    ? `<div style="background:#fde8e8; color:var(--danger); padding:8px; border-radius:6px; font-size:12px; margin-bottom:8px">
+         ⚠ ${errors.length} 件の注意:<br>${errors.map(esc).join('<br>')}
+       </div>` : '';
+
+  const previewRows = tasks.slice(0, 20).map((t, i) => {
+    const proj = state.projects.find(p => p.id === t.projectId);
+    return `
+      <tr>
+        <td>${i+1}</td>
+        <td>${esc(t.title)}</td>
+        <td><span class="chip s-${t.status}" style="font-size:10px">${esc(statusLabel(t.status))}</span></td>
+        <td>${esc(t.dueDate || '—')}</td>
+        <td>${esc(proj?.name || '—')}</td>
+        <td>${esc(t.partner || '—')}</td>
+        <td>${t.isToday ? '★' : ''}</td>
+      </tr>
+    `;
+  }).join('');
+
+  $('#csvPreview').innerHTML = `
+    ${errHtml}
+    <div style="font-size:13px; font-weight:700; margin-bottom:6px">
+      取込予定: <span style="color:var(--brand)">${tasks.length} 件</span>
+      ${tasks.length > 20 ? `<span style="font-weight:400; color:var(--ink-3)">(先頭20件を表示)</span>` : ''}
+    </div>
+    <div style="max-height:280px; overflow:auto; border:1px solid var(--line); border-radius:8px">
+      <table style="font-size:12px; width:100%; border-collapse:collapse">
+        <thead style="background:var(--line-2); position:sticky; top:0">
+          <tr>
+            <th style="padding:6px 8px; text-align:left">#</th>
+            <th style="padding:6px 8px; text-align:left">タイトル</th>
+            <th style="padding:6px 8px; text-align:left">ステータス</th>
+            <th style="padding:6px 8px; text-align:left">期日</th>
+            <th style="padding:6px 8px; text-align:left">案件</th>
+            <th style="padding:6px 8px; text-align:left">相手</th>
+            <th style="padding:6px 8px; text-align:center">今日</th>
+          </tr>
+        </thead>
+        <tbody>${previewRows}</tbody>
+      </table>
+    </div>
+  `;
+  // テーブルセルに枠線を
+  $$('#csvPreview td').forEach(td => {
+    td.style.padding = '5px 8px';
+    td.style.borderTop = '1px solid var(--line-2)';
+  });
+  $('#btnConfirmImport').disabled = tasks.length === 0;
+}
+
+$('#btnDownloadCsvTemplate').addEventListener('click', () => {
+  // BOM 付きで Excel 互換
+  const blob = new Blob(['﻿' + CSV_SAMPLE], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'mytask-import-template.csv'; a.click();
+  URL.revokeObjectURL(url);
+  toast('サンプルCSVをダウンロードしました');
+});
+
+$('#btnPickCsvFile').addEventListener('click', () => $('#csvFileInput').click());
+
+$('#csvFileInput').addEventListener('change', (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    $('#csvPasteArea').value = r.result;
+    previewCsv(r.result);
+  };
+  r.readAsText(f, 'UTF-8');
+});
+
+$('#btnParseCsv').addEventListener('click', () => previewCsv($('#csvPasteArea').value));
+
+$('#btnConfirmImport').addEventListener('click', () => {
+  if (!_csvPendingTasks.length) return;
+  if (!confirm(`${_csvPendingTasks.length} 件のタスクを追加します。よろしいですか？`)) return;
+  // 先頭に追加（新しいタスクが上に来るように）
+  state.tasks = [..._csvPendingTasks, ...state.tasks];
+  saveState();
+  closeModal('modalCsv');
+  renderAll();
+  goto('tasks');
+  toast(`✅ ${_csvPendingTasks.length} 件を追加しました`);
+  _csvPendingTasks = [];
+});
+
 /* ─── projects page ─ */
 function renderProjects() {
   $('#cntProjects').textContent = state.projects.length;
@@ -2099,6 +2397,7 @@ $('#btnSettings').addEventListener('click', () => {
   $('#gasDays').value = state.settings.gasDays || 7;
   $('#gasAutoSync').checked = !!state.settings.gasAutoSync;
   updateGasStatus();
+  renderCalendarPicker();
   openModal('modalSettings');
 });
 $('#settingsSave').addEventListener('click', () => {
@@ -2133,6 +2432,60 @@ function updateSyncButtonVisibility() {
   if (btn) btn.style.display = state.settings.gasUrl ? '' : 'none';
 }
 
+async function loadCalendarList() {
+  const url = state.settings.gasUrl;
+  if (!url) { toast('⚙ GAS URL を入力してください'); return; }
+  // 入力中の URL を先に反映
+  state.settings.gasUrl = $('#gasUrl').value.trim();
+  toast('カレンダー一覧を取得中…');
+  try {
+    const u = new URL(state.settings.gasUrl);
+    u.searchParams.set('action', 'list');
+    const res = await fetch(u.toString());
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '不明なエラー');
+    state.settings.gasCalendarList = data.calendars || [];
+    // 初回ならデフォルトカレンダーをチェック
+    if (!state.settings.gasCalendarIds || !state.settings.gasCalendarIds.length) {
+      const def = data.calendars.find(c => c.isDefault);
+      if (def) state.settings.gasCalendarIds = [def.id];
+    }
+    saveState();
+    renderCalendarPicker();
+    toast(`✅ ${data.calendars.length} 件のカレンダーを取得`);
+  } catch (err) {
+    console.error(err);
+    toast('❌ 取得失敗: ' + err.message);
+  }
+}
+
+function renderCalendarPicker() {
+  const box = $('#calendarPicker');
+  if (!box) return;
+  const cals = state.settings.gasCalendarList || [];
+  if (!cals.length) {
+    box.innerHTML = `<div class="empty" style="margin:0">「↻ カレンダー一覧を取得」を押してください</div>`;
+    return;
+  }
+  const selected = new Set(state.settings.gasCalendarIds || []);
+  box.innerHTML = cals.map(c => `
+    <label style="display:flex; align-items:center; gap:8px; padding:6px 4px; cursor:pointer; font-size:13px">
+      <input type="checkbox" class="cal-cb" value="${esc(c.id)}" ${selected.has(c.id) ? 'checked' : ''}>
+      <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${esc(c.color || '#999')}"></span>
+      <span style="flex:1; min-width:0; word-break:break-all">${esc(c.name)}${c.isDefault ? ' <span style="font-size:10px; color:var(--ink-3)">(既定)</span>' : ''}</span>
+    </label>
+  `).join('');
+  // チェック変更を即時反映
+  $$('#calendarPicker .cal-cb').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const ids = $$('#calendarPicker .cal-cb').filter(x => x.checked).map(x => x.value);
+      state.settings.gasCalendarIds = ids;
+      saveState();
+    });
+  });
+}
+
 async function syncCalendar({ silent = false } = {}) {
   const url = state.settings.gasUrl;
   if (!url) {
@@ -2144,6 +2497,8 @@ async function syncCalendar({ silent = false } = {}) {
   try {
     const u = new URL(url);
     u.searchParams.set('days', String(days));
+    const ids = state.settings.gasCalendarIds || [];
+    if (ids.length) u.searchParams.set('calendarIds', ids.join(','));
     const res = await fetch(u.toString(), { method: 'GET', redirect: 'follow' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
@@ -2199,6 +2554,7 @@ $('#btnSyncCalendar').addEventListener('click', () => {
   syncCalendar();
 });
 $('#btnSyncCalTop').addEventListener('click', () => syncCalendar());
+$('#btnLoadCalendars').addEventListener('click', loadCalendarList);
 $('#btnExport').addEventListener('click', () => {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
