@@ -1050,6 +1050,10 @@
           <button class="btn sm primary" id="btnSyncCalendar" type="button">📅 今すぐ取り込む</button>
           <span id="gasStatus" style="font-size:11px; color:var(--ink-3); align-self:center"></span>
         </div>
+        <div id="hiddenInfo" style="margin-top:10px; font-size:12px; color:var(--ink-2); display:none">
+          🙈 <span id="hiddenCount">0</span> 件の予定を非表示中
+          <button class="btn xs" id="btnRestoreHidden" type="button" style="margin-left:8px">すべて復元</button>
+        </div>
       </div>
     </details>
 
@@ -1139,6 +1143,7 @@ function defaultState() {
       gasLastSync: '',
       gasCalendarIds: [],   // 取込対象のカレンダーID配列
       gasCalendarList: [],  // 直近取得したカレンダー一覧（キャッシュ）
+      hiddenExternalIds: [],// 非表示にしたカレンダー予定の外部ID（同期で再表示されないように）
     },
     taskFilter: 'all',
     taskSort: 'default',
@@ -1610,12 +1615,24 @@ function openMeetingModal(m) {
     toast(isNew ? '追加しました' : '保存しました');
   };
   $('#meetingDelete').onclick = () => {
-    if (!confirm('この打ち合わせを削除しますか？')) return;
+    const isFromCalendar = !!m.externalId;
+    const msg = isFromCalendar
+      ? 'この打ち合わせをアプリから削除しますか？\n\n' +
+        '✓ Googleカレンダー本体には影響しません\n' +
+        '✓ 次回同期で再表示されないよう「非表示リスト」に追加します'
+      : 'この打ち合わせを削除しますか？';
+    if (!confirm(msg)) return;
+    if (isFromCalendar) {
+      state.settings.hiddenExternalIds = state.settings.hiddenExternalIds || [];
+      if (!state.settings.hiddenExternalIds.includes(m.externalId)) {
+        state.settings.hiddenExternalIds.push(m.externalId);
+      }
+    }
     state.meetings = state.meetings.filter(x => x.id !== m.id);
     saveState();
     closeModal('modalMeeting');
     renderAll();
-    toast('削除しました');
+    toast(isFromCalendar ? '🙈 非表示にしました' : '削除しました');
   };
   $('#btnRegen').onclick = () => {
     const tmp = {
@@ -1864,16 +1881,20 @@ function renderFollowupCard(t) {
 }
 
 function renderMeetingCard(m) {
+  const fromCal = !!m.externalId;
   return `
     <div class="mtg" data-mtg-id="${m.id}">
       <div class="mtg-head">
-        <div>
+        <div style="flex:1; min-width:0">
           <div class="mtg-time">⏰ ${esc(m.time || '--:--')}</div>
           <div class="mtg-title">${esc(m.title || '(件名なし)')}</div>
           ${m.partner ? `<div class="mtg-partner">👤 ${esc(m.partner)}</div>` : ''}
           ${m.meetingUrl ? `<div class="mtg-url">🔗 ${esc(m.meetingUrl)}</div>` : ''}
         </div>
-        <button class="icon-btn" data-mtg-edit="${m.id}" title="編集">✎</button>
+        <div style="display:flex; gap:4px; flex-shrink:0">
+          <button class="icon-btn" data-mtg-edit="${m.id}" title="編集">✎</button>
+          <button class="icon-btn" data-mtg-hide="${m.id}" title="${fromCal ? '非表示にする (カレンダー本体には影響しません)' : '削除'}" style="color:var(--ink-3)">×</button>
+        </div>
       </div>
       <div class="mtg-actions">
         <button class="btn sm primary" data-mtg-remind="${m.id}">📋 リマインド文をコピー</button>
@@ -1889,6 +1910,29 @@ document.addEventListener('click', async (e) => {
   if (editId) {
     const m = state.meetings.find(x => x.id === editId);
     if (m) openMeetingModal(m);
+    return;
+  }
+  const hideId = e.target.closest('[data-mtg-hide]')?.dataset.mtgHide;
+  if (hideId) {
+    const m = state.meetings.find(x => x.id === hideId);
+    if (!m) return;
+    const fromCal = !!m.externalId;
+    const msg = fromCal
+      ? `「${m.title || '(件名なし)'}」をアプリから非表示にしますか？\n\n` +
+        '✓ Googleカレンダー本体には影響しません\n' +
+        '✓ 次回同期でも再表示されません（設定から復元可能）'
+      : `「${m.title || '(件名なし)'}」を削除しますか？`;
+    if (!confirm(msg)) return;
+    if (fromCal) {
+      state.settings.hiddenExternalIds = state.settings.hiddenExternalIds || [];
+      if (!state.settings.hiddenExternalIds.includes(m.externalId)) {
+        state.settings.hiddenExternalIds.push(m.externalId);
+      }
+    }
+    state.meetings = state.meetings.filter(x => x.id !== m.id);
+    saveState();
+    renderAll();
+    toast(fromCal ? '🙈 非表示にしました' : '削除しました');
     return;
   }
   const remindId = e.target.closest('[data-mtg-remind]')?.dataset.mtgRemind;
@@ -2486,6 +2530,18 @@ function updateGasStatus() {
   } else {
     el.textContent = '未同期';
   }
+  // 非表示リスト
+  const hidden = state.settings.hiddenExternalIds || [];
+  const info = $('#hiddenInfo');
+  const cnt = $('#hiddenCount');
+  if (info && cnt) {
+    if (hidden.length) {
+      info.style.display = '';
+      cnt.textContent = hidden.length;
+    } else {
+      info.style.display = 'none';
+    }
+  }
 }
 
 function updateSyncButtonVisibility() {
@@ -2598,9 +2654,11 @@ async function syncCalendar({ silent = false } = {}) {
     if (!data.ok) throw new Error(data.error || '不明なエラー');
 
     const events = data.events || [];
-    let added = 0, updated = 0;
+    const hidden = new Set(state.settings.hiddenExternalIds || []);
+    let added = 0, updated = 0, skipped = 0;
     events.forEach(ev => {
       if (ev.allDay) return; // 終日予定は対象外（必要なら外す）
+      if (hidden.has(ev.id)) { skipped++; return; }
       const existing = state.meetings.find(m => m.externalId === ev.id);
       const payload = {
         date: ev.date,
@@ -2629,8 +2687,8 @@ async function syncCalendar({ silent = false } = {}) {
     saveState();
     updateGasStatus();
     renderAll();
-    if (!silent) toast(`✅ 同期完了 (+${added} / ↻${updated})`);
-    return { ok: true, added, updated };
+    if (!silent) toast(`✅ 同期完了 (+${added} / ↻${updated}${skipped ? ' / 非表示' + skipped : ''})`);
+    return { ok: true, added, updated, skipped };
   } catch (err) {
     console.error('sync failed', err);
     if (!silent) toast('❌ 同期失敗: ' + err.message);
@@ -2648,6 +2706,16 @@ $('#btnSyncCalendar').addEventListener('click', () => {
 });
 $('#btnSyncCalTop').addEventListener('click', () => syncCalendar());
 $('#btnLoadCalendars').addEventListener('click', loadCalendarList);
+
+$('#btnRestoreHidden').addEventListener('click', () => {
+  const hidden = state.settings.hiddenExternalIds || [];
+  if (!hidden.length) return;
+  if (!confirm(`${hidden.length} 件の非表示予定をすべて復元しますか？\n次回の同期でアプリに再表示されます。`)) return;
+  state.settings.hiddenExternalIds = [];
+  saveState();
+  updateGasStatus();
+  toast('🔄 復元しました。同期で再表示されます');
+});
 $('#btnExport').addEventListener('click', () => {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
