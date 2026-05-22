@@ -366,11 +366,28 @@
   .mtg {
     border: 1px solid var(--line); border-radius: 10px;
     padding: 12px; margin-bottom: 8px; background: var(--card);
+    transition: opacity 0.25s, transform 0.25s, height 0.25s;
+  }
+  .mtg.fading {
+    opacity: 0; transform: translateX(20px) scale(0.96);
+    pointer-events: none;
   }
   .mtg-head {
-    display: flex; align-items: flex-start; justify-content: space-between;
-    gap: 8px;
+    display: flex; align-items: flex-start;
+    gap: 10px;
   }
+  .mtg-check {
+    width: 24px; height: 24px; border: 2px solid var(--line);
+    border-radius: 50%; background: white;
+    cursor: pointer; flex-shrink: 0; margin-top: 1px;
+    transition: all 0.15s;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: white; font-size: 13px; font-weight: 800;
+  }
+  .mtg-check:hover { border-color: var(--done); background: #f0faf3; }
+  .mtg-check:active { transform: scale(0.92); }
+  .mtg.done .mtg-check { background: var(--done); border-color: var(--done); }
+  .mtg.done .mtg-check::after { content: '✓'; }
   .mtg-time {
     font-size: 16px; font-weight: 800; color: var(--brand);
     white-space: nowrap;
@@ -629,14 +646,14 @@
         <div class="qs"><div class="n" id="qsToday">0</div><div class="l">今日やる</div></div>
         <div class="qs"><div class="n" id="qsMine">0</div><div class="l">マイボール</div></div>
         <div class="qs"><div class="n" id="qsTheirs">0</div><div class="l">相手待ち</div></div>
-        <div class="qs"><div class="n" id="qsMtg">0</div><div class="l">打合せ</div></div>
+        <div class="qs"><div class="n" id="qsMtg">0</div><div class="l">予定</div></div>
       </div>
     </div>
 
     <!-- 今日の打ち合わせ + リマインド -->
     <div class="section">
       <div class="section-head">
-        <h2>📅 今日の打ち合わせ <span class="count" id="cntMtg">0</span></h2>
+        <h2>📅 今日のスケジュール <span class="count" id="cntMtg">0</span></h2>
         <div class="actions">
           <button class="btn sm" id="btnSyncCalTop" title="Googleカレンダーから取込" style="display:none">↻ 同期</button>
           <button class="btn sm" id="btnAddMtg">＋ 追加</button>
@@ -875,7 +892,7 @@
 <!-- ─────── MODAL: Meeting / Reminder ─────── -->
 <div class="modal-bg" id="modalMeeting">
   <div class="modal">
-    <h3 id="modalMeetingTitle">打ち合わせ</h3>
+    <h3 id="modalMeetingTitle">予定</h3>
     <input type="hidden" id="meetingId">
 
     <div class="row row-2">
@@ -1628,7 +1645,7 @@ function newMeeting(partial = {}) {
 function openMeetingModal(m) {
   const isNew = !m;
   m = m || newMeeting();
-  $('#modalMeetingTitle').textContent = isNew ? '＋ 新しい打ち合わせ' : '打ち合わせを編集';
+  $('#modalMeetingTitle').textContent = isNew ? '＋ 新しい予定' : '予定を編集';
   $('#meetingId').value = m.id;
   $('#meetingDate').value = m.date;
   $('#meetingTime').value = m.time;
@@ -1669,10 +1686,10 @@ function openMeetingModal(m) {
   $('#meetingDelete').onclick = () => {
     const isFromCalendar = !!m.externalId;
     const msg = isFromCalendar
-      ? 'この打ち合わせをアプリから削除しますか？\n\n' +
+      ? 'この予定をアプリから削除しますか？\n\n' +
         '✓ Googleカレンダー本体には影響しません\n' +
         '✓ 次回同期で再表示されないよう「非表示リスト」に追加します'
-      : 'この打ち合わせを削除しますか？';
+      : 'この予定を削除しますか？';
     if (!confirm(msg)) return;
     if (isFromCalendar) {
       state.settings.hiddenExternalIds = state.settings.hiddenExternalIds || [];
@@ -1860,7 +1877,7 @@ function renderToday() {
   const parts = [];
   if (todayList.length) parts.push(`今日やるタスク <b>${todayList.length}</b> 件`);
   if (overdue) parts.push(`<b>期限超過 ${overdue} 件</b>`);
-  if (mtgs.length) parts.push(`打ち合わせ <b>${mtgs.length}</b> 件`);
+  if (mtgs.length) parts.push(`予定 <b>${mtgs.length}</b> 件`);
   $('#todaySummary').innerHTML = parts.length
     ? parts.join(' / ')
     : '今日のタスク・予定はありません 🎉';
@@ -1874,7 +1891,7 @@ function renderToday() {
   $('#cntMtg').textContent = mtgs.length;
   $('#meetingsList').innerHTML = mtgs.length
     ? mtgs.map(renderMeetingCard).join('')
-    : `<div class="empty">今日の打ち合わせはありません。「＋ 追加」から登録できます。</div>`;
+    : `<div class="empty">今日の予定はありません。「＋ 追加」から登録できます。</div>`;
 
   // today tasks
   $('#cntTodayTasks').textContent = todayList.length;
@@ -1937,16 +1954,14 @@ function renderMeetingCard(m) {
   return `
     <div class="mtg" data-mtg-id="${m.id}">
       <div class="mtg-head">
+        <div class="mtg-check" data-mtg-done="${m.id}" title="完了 (Googleカレンダーには影響しません)"></div>
         <div style="flex:1; min-width:0">
           <div class="mtg-time">⏰ ${esc(m.time || '--:--')}</div>
           <div class="mtg-title">${esc(m.title || '(件名なし)')}</div>
           ${m.partner ? `<div class="mtg-partner">👤 ${esc(m.partner)}</div>` : ''}
           ${m.meetingUrl ? `<div class="mtg-url">🔗 ${esc(m.meetingUrl)}</div>` : ''}
         </div>
-        <div style="display:flex; gap:4px; flex-shrink:0">
-          <button class="icon-btn" data-mtg-edit="${m.id}" title="編集">✎</button>
-          <button class="icon-btn" data-mtg-hide="${m.id}" title="${fromCal ? '非表示にする (カレンダー本体には影響しません)' : '削除'}" style="color:var(--ink-3)">×</button>
-        </div>
+        <button class="icon-btn" data-mtg-edit="${m.id}" title="編集" style="flex-shrink:0">✎</button>
       </div>
       <div class="mtg-actions">
         <button class="btn sm primary" data-mtg-remind="${m.id}">📋 リマインド文をコピー</button>
@@ -1964,27 +1979,27 @@ document.addEventListener('click', async (e) => {
     if (m) openMeetingModal(m);
     return;
   }
-  const hideId = e.target.closest('[data-mtg-hide]')?.dataset.mtgHide;
-  if (hideId) {
-    const m = state.meetings.find(x => x.id === hideId);
+  const doneId = e.target.closest('[data-mtg-done]')?.dataset.mtgDone;
+  if (doneId) {
+    const m = state.meetings.find(x => x.id === doneId);
     if (!m) return;
-    const fromCal = !!m.externalId;
-    const msg = fromCal
-      ? `「${m.title || '(件名なし)'}」をアプリから非表示にしますか？\n\n` +
-        '✓ Googleカレンダー本体には影響しません\n' +
-        '✓ 次回同期でも再表示されません（設定から復元可能）'
-      : `「${m.title || '(件名なし)'}」を削除しますか？`;
-    if (!confirm(msg)) return;
-    if (fromCal) {
-      state.settings.hiddenExternalIds = state.settings.hiddenExternalIds || [];
-      if (!state.settings.hiddenExternalIds.includes(m.externalId)) {
-        state.settings.hiddenExternalIds.push(m.externalId);
-      }
+    const card = e.target.closest('.mtg');
+    if (card) {
+      card.classList.add('done', 'fading');
     }
-    state.meetings = state.meetings.filter(x => x.id !== m.id);
-    saveState();
-    renderAll();
-    toast(fromCal ? '🙈 非表示にしました' : '削除しました');
+    // 0.25 秒のフェードアウト後に状態更新
+    setTimeout(() => {
+      if (m.externalId) {
+        state.settings.hiddenExternalIds = state.settings.hiddenExternalIds || [];
+        if (!state.settings.hiddenExternalIds.includes(m.externalId)) {
+          state.settings.hiddenExternalIds.push(m.externalId);
+        }
+      }
+      state.meetings = state.meetings.filter(x => x.id !== m.id);
+      saveState();
+      renderAll();
+      toast('✓ 完了にしました');
+    }, 250);
     return;
   }
   const remindId = e.target.closest('[data-mtg-remind]')?.dataset.mtgRemind;
