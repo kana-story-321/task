@@ -491,6 +491,69 @@
   }
   details.collapse[open] > summary::after { transform: rotate(180deg); }
 
+  /* ─── Calendar picker ─ */
+  .cal-picker {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    max-height: 280px;
+    overflow-y: auto;
+  }
+  .cal-toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--line-2);
+    border-bottom: 1px solid var(--line);
+    font-size: 12px; color: var(--ink-2);
+    position: sticky; top: 0; z-index: 1;
+  }
+  .cal-toolbar b { color: var(--brand); }
+  .cal-toolbar a {
+    color: var(--brand-2); cursor: pointer;
+    font-weight: 700; text-decoration: none;
+    padding: 2px 6px; border-radius: 6px;
+  }
+  .cal-toolbar a:hover { background: white; }
+  .cal-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line-2);
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  .cal-item:last-child { border-bottom: none; }
+  .cal-item:hover { background: var(--line-2); }
+  .cal-item.checked { background: #eaf2fb; }
+  .cal-item.checked:hover { background: #dde9f7; }
+  .cal-item input[type="checkbox"] {
+    width: 18px; height: 18px; margin: 0; flex-shrink: 0;
+    cursor: pointer; accent-color: var(--brand);
+  }
+  .cal-color {
+    width: 14px; height: 14px; border-radius: 50%;
+    flex-shrink: 0;
+    border: 1px solid rgba(0,0,0,0.12);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.3);
+  }
+  .cal-name {
+    flex: 1; min-width: 0;
+    font-size: 14px; font-weight: 600; color: var(--ink);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .cal-tag {
+    font-size: 10px; font-weight: 700;
+    padding: 2px 8px; border-radius: 8px;
+    background: var(--line-2); color: var(--ink-3);
+    flex-shrink: 0; letter-spacing: 0.5px;
+  }
+  .cal-tag.default { background: var(--brand); color: white; }
+  .cal-tag.shared  { background: #fef3e0; color: #b8770a; }
+  .cal-empty {
+    padding: 22px 16px; text-align: center;
+    color: var(--ink-3); font-size: 13px; line-height: 1.6;
+  }
+
   textarea.reminder-out {
     width: 100%; min-height: 200px; padding: 12px;
     border: 1px solid var(--line); border-radius: 8px;
@@ -980,9 +1043,7 @@
         </div>
         <div class="field">
           <label>📌 取込対象のカレンダー</label>
-          <div id="calendarPicker" style="border:1px solid var(--line); border-radius:8px; padding:8px; max-height:180px; overflow-y:auto; background:var(--line-2)">
-            <div class="empty" style="margin:0">「↻ カレンダー一覧を取得」を押してください</div>
-          </div>
+          <div id="calendarPicker" class="cal-picker"></div>
           <button class="btn sm" id="btnLoadCalendars" type="button" style="margin-top:6px">↻ カレンダー一覧を取得</button>
         </div>
         <div style="display:flex; gap:6px; flex-wrap:wrap">
@@ -2465,23 +2526,55 @@ function renderCalendarPicker() {
   if (!box) return;
   const cals = state.settings.gasCalendarList || [];
   if (!cals.length) {
-    box.innerHTML = `<div class="empty" style="margin:0">「↻ カレンダー一覧を取得」を押してください</div>`;
+    box.innerHTML = `<div class="cal-empty">下の「↻ カレンダー一覧を取得」を押すと、<br>あなたのカレンダーがここに表示されます</div>`;
     return;
   }
   const selected = new Set(state.settings.gasCalendarIds || []);
-  box.innerHTML = cals.map(c => `
-    <label style="display:flex; align-items:center; gap:8px; padding:6px 4px; cursor:pointer; font-size:13px">
-      <input type="checkbox" class="cal-cb" value="${esc(c.id)}" ${selected.has(c.id) ? 'checked' : ''}>
-      <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${esc(c.color || '#999')}"></span>
-      <span style="flex:1; min-width:0; word-break:break-all">${esc(c.name)}${c.isDefault ? ' <span style="font-size:10px; color:var(--ink-3)">(既定)</span>' : ''}</span>
-    </label>
-  `).join('');
-  // チェック変更を即時反映
+  const selCount = cals.filter(c => selected.has(c.id)).length;
+
+  const items = cals.map(c => {
+    const isOn = selected.has(c.id);
+    let tag = '';
+    if (c.isDefault) tag = '<span class="cal-tag default">既定</span>';
+    else if (c.isOwned === false) tag = '<span class="cal-tag shared">共有</span>';
+    return `
+      <label class="cal-item ${isOn ? 'checked' : ''}" data-cal-id="${esc(c.id)}">
+        <input type="checkbox" class="cal-cb" value="${esc(c.id)}" ${isOn ? 'checked' : ''}>
+        <span class="cal-color" style="background:${esc(c.color || '#9aa5b1')}"></span>
+        <span class="cal-name" title="${esc(c.name)}">${esc(c.name)}</span>
+        ${tag}
+      </label>
+    `;
+  }).join('');
+
+  box.innerHTML = `
+    <div class="cal-toolbar">
+      <span>${cals.length} 件中 <b>${selCount}</b> 件選択中</span>
+      <span>
+        <a data-cal-action="all">すべて選択</a>
+        <a data-cal-action="none">解除</a>
+      </span>
+    </div>
+    ${items}
+  `;
+
+  // チェック変更
   $$('#calendarPicker .cal-cb').forEach(cb => {
     cb.addEventListener('change', () => {
       const ids = $$('#calendarPicker .cal-cb').filter(x => x.checked).map(x => x.value);
       state.settings.gasCalendarIds = ids;
       saveState();
+      renderCalendarPicker(); // 選択状態のハイライト更新
+    });
+  });
+  // すべて選択 / 解除
+  $$('#calendarPicker [data-cal-action]').forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const action = a.dataset.calAction;
+      state.settings.gasCalendarIds = action === 'all' ? cals.map(c => c.id) : [];
+      saveState();
+      renderCalendarPicker();
     });
   });
 }
