@@ -2780,6 +2780,8 @@ async function pullFromCloud({ silent = true, force = false } = {}) {
     if (!silent) toast('⚙ GAS URL を設定してください');
     return;
   }
+  // pull の最中にローカル変更が push されないよう、保留中の push をキャンセル
+  clearTimeout(_pushTimer);
   setSyncBadge('syncing', '☁ 取得中…');
   try {
     const u = new URL(state.settings.gasUrl);
@@ -3114,10 +3116,12 @@ function applyHashConfig() {
   try {
     const decoded = atob(decodeURIComponent(m[1]));
     if (decoded.startsWith('https://script.google.com/')) {
+      // 新端末セットアップ: ローカル状態を完全リセットしてクラウドから取得する
+      // (古いサンプルデータを誤ってクラウドに送信しないため)
+      state = defaultState();
       state.settings.gasUrl = decoded;
       state.settings.syncEnabled = true;
       saveStateLocalOnly();
-      // URLハッシュをクリーンに (履歴汚さない)
       history.replaceState(null, '', window.location.pathname + window.location.search);
       return true;
     }
@@ -3129,7 +3133,10 @@ function applyHashConfig() {
 
 const _hashApplied = applyHashConfig();
 
-bootstrapDemo();
+// クラウド同期中はサンプルデータ作成しない（クラウドが正）
+if (!_hashApplied && !state.settings.syncEnabled) {
+  bootstrapDemo();
+}
 renderAll();
 updateSyncButtonVisibility();
 updateSyncBadge();
