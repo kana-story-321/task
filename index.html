@@ -766,8 +766,9 @@
         </div>
       </div>
       <div class="help" style="margin-bottom:10px">
-        進捗 ％ = 現在値 ÷ 目標値。期待値（縦線）は案件期間の経過率から算出。<br>
-        遅れ ％ = 期待値 − 進捗（プラスは遅れ、マイナスは先行）。
+        📊 = 現在値をすばやく更新 / ✎ = 案件編集（KPI追加・削除はこちら）<br>
+        進捗 ％ = 現在値 ÷ 目標値、期待値（縦線）は案件期間の経過率、遅れ ％ = 期待 − 進捗<br>
+        新規KPIを追加するには「案件」タブで案件を編集 → 「＋ KPIを追加」
       </div>
       <div id="kpiList"></div>
     </div>
@@ -2536,7 +2537,7 @@ function renderKpi() {
     return (db ?? -999) - (da ?? -999);
   });
 
-  $('#kpiList').innerHTML = rows.map(({ p, k }) => {
+  $('#kpiList').innerHTML = rows.map(({ p, k }, idx) => {
     const t = Number(k.target) || 0;
     const c = Number(k.current) || 0;
     const pct = t > 0 ? clamp(Math.round(c / t * 100), 0, 100) : 0;
@@ -2548,16 +2549,21 @@ function renderKpi() {
       else if (dly > 0) cls = 'warn';
     }
     const fillCls = cls === 'good' ? '' : (cls === 'warn' ? 'warn' : 'bad');
+    const kIdx = (p.kpis || []).indexOf(k);
     return `
       <div class="kpi">
         <div class="kpi-head">
-          <div>
+          <div style="flex:1; min-width:0">
             <div class="kpi-name">${esc(k.name)}</div>
             <div class="kpi-prj" style="color:${esc(p.color||'#2d5a8f')}">▦ ${esc(p.name)}</div>
           </div>
-          <div class="kpi-numbers" style="margin:0">
-            <span class="now">${formatNum(c)}</span>
-            <span class="target">/ ${formatNum(t)} ${esc(k.unit||'')}</span>
+          <div style="display:flex; gap:6px; align-items:center; flex-shrink:0">
+            <div class="kpi-numbers" style="margin:0">
+              <span class="now">${formatNum(c)}</span>
+              <span class="target">/ ${formatNum(t)} ${esc(k.unit||'')}</span>
+            </div>
+            <button class="icon-btn" data-kpi-quick="${esc(p.id)}|${kIdx}" title="現在値をすばやく更新" style="width:30px; height:30px">📊</button>
+            <button class="icon-btn" data-kpi-edit="${esc(p.id)}" title="この案件のKPIを編集" style="width:30px; height:30px">✎</button>
           </div>
         </div>
         <div class="kpi-bar">
@@ -2574,6 +2580,33 @@ function renderKpi() {
     `;
   }).join('');
 }
+
+// KPI タブからの編集アクション
+document.addEventListener('click', (e) => {
+  const editPid = e.target.closest('[data-kpi-edit]')?.dataset.kpiEdit;
+  if (editPid) {
+    const p = state.projects.find(x => x.id === editPid);
+    if (p) openProjectModal(p);
+    return;
+  }
+  const quickKey = e.target.closest('[data-kpi-quick]')?.dataset.kpiQuick;
+  if (quickKey) {
+    const [pid, kIdxStr] = quickKey.split('|');
+    const p = state.projects.find(x => x.id === pid);
+    if (!p) return;
+    const kIdx = Number(kIdxStr);
+    const k = p.kpis?.[kIdx];
+    if (!k) return;
+    const input = prompt(`${k.name} の現在値を入力\n（目標: ${formatNum(k.target)} ${k.unit || ''}）`, k.current ?? '');
+    if (input === null) return;
+    const v = Number(input);
+    if (isNaN(v)) { toast('数値を入力してください'); return; }
+    k.current = v;
+    saveState();
+    renderAll();
+    toast(`✓ ${k.name} を更新しました`);
+  }
+});
 
 function kpiDelay(p, k) {
   const t = Number(k.target) || 0;
