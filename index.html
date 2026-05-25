@@ -1068,10 +1068,29 @@
     </div>
 
     <details class="collapse" open>
-      <summary>⏰ 予定アラーム（10分前に通知）</summary>
+      <summary>⏰ 予定アラーム</summary>
       <div style="margin-top:10px">
+
+        <div style="background:#e8f5e9; padding:10px; border-radius:8px; margin-bottom:12px">
+          <div style="font-size:13px; font-weight:700; color:#2d6e2d; margin-bottom:4px">
+            ✅ 推奨: Googleカレンダーの通知を使う（端末スリープ中もOK）
+          </div>
+          <div style="font-size:11px; color:var(--ink-2); line-height:1.7">
+            ① スマホに <b>Google カレンダー アプリ</b> をインストール<br>
+            ② アプリの設定で「<b>通知</b>」を有効化（音/バイブもON）<br>
+            ③ Googleカレンダー側で「<b>既定の通知: 10分前</b>」を設定<br>
+            　 (Web版で 設定 → カレンダーの設定 → 既定の通知)<br>
+            <br>
+            <b>このアプリで「完了 ◯」を押した予定は、自動的に Google カレンダー側の通知も
+            キャンセルします</b>（GAS経由）。なので、完了済みは鳴りません。
+          </div>
+        </div>
+
+        <div style="font-size:12px; font-weight:700; margin-bottom:6px; color:var(--ink-2)">
+          🌐 ブラウザ通知（補助：アプリ起動中のみ）
+        </div>
         <div class="field">
-          <label><input type="checkbox" id="alarmEnabled"> 予定の指定分前に通知＋音でアラーム</label>
+          <label><input type="checkbox" id="alarmEnabled"> 起動中なら指定分前にブラウザ通知＋音</label>
         </div>
         <div class="row row-2">
           <div class="field">
@@ -1089,10 +1108,8 @@
           </div>
         </div>
         <div class="help">
-          ⚠ <b>ブラウザが起動している時のみ</b>動作します（タブ閉じ・アプリ完全終了時は鳴りません）<br>
-          iPhone: 「ホーム画面に追加」した PWA + iOS 16.4以降 で通知対応<br>
-          Android: 通常タブ / ホーム画面アイコン どちらでもOK<br>
-          ✅ 完了チェック（◯）を押した予定はアラーム対象外になります
+          ⚠ ブラウザ通知は <b>このアプリが起動している時のみ</b>動作します。<br>
+          端末閉じても鳴らしたい場合は、上の「Google カレンダー通知」をお使いください。
         </div>
         <div id="alarmPermStatus" style="margin-top:6px; font-size:11px; color:var(--ink-3)"></div>
       </div>
@@ -2056,11 +2073,13 @@ document.addEventListener('click', async (e) => {
         if (!state.settings.hiddenExternalIds.includes(m.externalId)) {
           state.settings.hiddenExternalIds.push(m.externalId);
         }
+        // 🆕 GAS経由でGoogleカレンダーのリマインダーを削除（端末閉じてても通知が鳴らないように）
+        cancelGCalReminder(m);
       }
       state.meetings = state.meetings.filter(x => x.id !== m.id);
       saveState();
       renderAll();
-      toast('✓ 完了にしました');
+      toast('✓ 完了にしました（通知もキャンセル）');
     }, 250);
     return;
   }
@@ -2853,6 +2872,27 @@ function playAlarmSound() {
   } catch (e) { console.warn('alarm sound failed', e); }
 }
 
+async function cancelGCalReminder(m) {
+  if (!state.settings.gasUrl) return;
+  if (!m.externalId) return;
+  try {
+    const res = await fetch(state.settings.gasUrl, {
+      method: 'POST', redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'cancelReminder',
+        eventId: m.externalId,
+        calendarId: m.calendarId || 'primary',
+      }),
+    });
+    const data = await res.json();
+    if (data.ok) console.log('[gcal] reminder canceled:', m.title);
+    else console.warn('[gcal] cancel failed:', data.error);
+  } catch (e) {
+    console.warn('[gcal] cancel network err', e);
+  }
+}
+
 function fireMeetingAlarm(m) {
   const min = state.settings.alarmMinutesBefore || 10;
   const title = `⏰ ${min}分後に予定が始まります`;
@@ -3225,6 +3265,7 @@ async function syncCalendar({ silent = false } = {}) {
         meetingUrl: ev.meetingUrl || ev.location || '',
         notes: ev.notes || '',
         externalId: ev.id,
+        calendarId: ev.calendarId || '',
         source: 'gcal',
       };
       if (existing) {

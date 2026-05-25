@@ -36,10 +36,44 @@ function doPost(e) {
     const body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     if (body.action === 'save') return saveData(body);
     if (body.action === 'load') return loadData();
+    if (body.action === 'cancelReminder') return cancelReminder(body);
+    if (body.action === 'setReminder')    return setReminder(body);
     return json({ ok: false, error: 'unknown action: ' + body.action });
   } catch (err) {
     return json({ ok: false, error: String(err && err.message || err) });
   }
+}
+
+/* ─── 予定通知の削除・設定 ───────────── */
+function _getCalendar(calId) {
+  if (!calId || calId === 'primary') return CalendarApp.getDefaultCalendar();
+  try { return CalendarApp.getCalendarById(calId); } catch (_) { return null; }
+}
+
+function cancelReminder(body) {
+  const eventId = body.eventId;
+  if (!eventId) return json({ ok: false, error: 'eventId required' });
+  const calId = body.calendarId || 'primary';
+  const cal = _getCalendar(calId);
+  if (!cal) return json({ ok: false, error: 'calendar not found: ' + calId });
+  const event = cal.getEventById(eventId);
+  if (!event) return json({ ok: false, error: 'event not found in calendar' });
+  event.removeAllReminders();
+  return json({ ok: true, action: 'cancelReminder', eventId: eventId });
+}
+
+function setReminder(body) {
+  const eventId = body.eventId;
+  if (!eventId) return json({ ok: false, error: 'eventId required' });
+  const calId = body.calendarId || 'primary';
+  const minutes = Number(body.minutes) || 10;
+  const cal = _getCalendar(calId);
+  if (!cal) return json({ ok: false, error: 'calendar not found: ' + calId });
+  const event = cal.getEventById(eventId);
+  if (!event) return json({ ok: false, error: 'event not found in calendar' });
+  event.removeAllReminders();
+  event.addPopupReminder(minutes);
+  return json({ ok: true, action: 'setReminder', eventId: eventId, minutes: minutes });
 }
 
 /* ─── データ保存（Driveの JSON ファイル） ───────────── */
