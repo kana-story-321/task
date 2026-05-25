@@ -6,6 +6,9 @@
 <meta name="theme-color" content="#1e3a5f">
 <meta name="robots" content="noindex,nofollow,noarchive">
 <meta name="referrer" content="no-referrer">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>My Task</title>
 
 <!-- Favicons / App icons -->
@@ -1076,6 +1079,7 @@
         <div style="display:flex; gap:6px; flex-wrap:wrap">
           <button class="btn sm primary" id="btnPullNow" type="button">⬇ 今すぐ取得（クラウド → 端末）</button>
           <button class="btn sm" id="btnPushNow" type="button">⬆ 今すぐ保存（端末 → クラウド）</button>
+          <button class="btn sm ghost" id="btnInspectCloud" type="button">🔍 クラウドの中身を確認</button>
         </div>
         <div id="syncInfo" style="margin-top:8px; font-size:11px; color:var(--ink-3)">未同期</div>
 
@@ -2692,8 +2696,16 @@ document.addEventListener('click', (e) => {
     saveStateLocalOnly();
     pullFromCloud({ silent: false, force: true });
   }
+  if (e.target.closest('#btnInspectCloud')) {
+    const url = $('#gasUrl').value.trim();
+    if (!url) { toast('GAS URL を入力してください'); return; }
+    window.open(url + '?action=load', '_blank');
+    return;
+  }
   if (e.target.closest('#btnPushNow')) {
     state.settings.gasUrl = $('#gasUrl').value.trim();
+    state._meta = state._meta || {};
+    state._meta.lastModified = Date.now(); // 強制的に最新化してクラウドへ反映
     saveStateLocalOnly();
     pushToCloud({ silent: false });
   }
@@ -2752,6 +2764,10 @@ async function pushToCloud({ silent = true } = {}) {
   _pushInFlight = true;
   setSyncBadge('syncing', '☁ 保存中…');
   try {
+    // タイムスタンプ未設定なら必ず付与（古いデータでも正常に同期できるよう）
+    state._meta = state._meta || {};
+    if (!state._meta.lastModified) state._meta.lastModified = Date.now();
+
     const res = await fetch(state.settings.gasUrl, {
       method: 'POST', redirect: 'follow',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -2792,30 +2808,44 @@ async function pullFromCloud({ silent = true, force = false } = {}) {
     if (!data.ok) throw new Error(data.error || '不明なエラー');
 
     const remote = data.data || {};
+    const remoteHas = !!((remote.tasks && remote.tasks.length) ||
+                         (remote.projects && remote.projects.length) ||
+                         (remote.meetings && remote.meetings.length));
+    const localHas  = !!((state.tasks && state.tasks.length) ||
+                         (state.projects && state.projects.length) ||
+                         (state.meetings && state.meetings.length));
     const remoteTs = (remote && remote._meta && remote._meta.lastModified) || 0;
     const localTs  = (state && state._meta && state._meta.lastModified)  || 0;
 
-    if (!remoteTs && !localTs) {
-      // どちらも空 → なにもしない
-    } else if (!remoteTs && localTs) {
-      // クラウドが空 → 端末の内容を保存
-      await pushToCloud({ silent });
-    } else if (force || remoteTs > localTs) {
-      // クラウドが新しい → 端末を更新
-      const preservedSettings = { ...state.settings }; // URL等は端末のものを優先
+    // 同期判定: データの有無を優先 + タイムスタンプで補完
+    const pullDown =
+      force ||
+      (remoteHas && !localHas) ||
+      (remoteHas && remoteTs > localTs);
+    const pushUp =
+      !force &&
+      ((!remoteHas && localHas) ||
+       (localHas && localTs > remoteTs && !remoteHas));
+
+    console.log('[sync] pull decision:',
+      { remoteHas, localHas, remoteTs, localTs, force, pullDown, pushUp });
+
+    if (pullDown) {
+      // クラウド → 端末
+      const preservedSettings = { ...state.settings };
       state = { ...defaultState(), ...remote };
-      // クラウド側の同期設定値で端末を上書きしない
-      state.settings = { ...remote.settings, ...preservedSettings,
-        // タイムスタンプはクラウドの最新を反映
+      state.settings = { ...(remote.settings || {}), ...preservedSettings,
         lastPulledAt: Date.now(),
       };
-      state._meta = { ...(remote._meta || {}), lastModified: remoteTs };
+      state._meta = { ...(remote._meta || {}), lastModified: remoteTs || Date.now() };
       saveStateLocalOnly();
       renderAll();
       if (!silent) toast('☁ 最新データを取得しました');
-    } else if (localTs > remoteTs) {
-      // 端末が新しい → クラウドへ保存
+    } else if (pushUp) {
+      // 端末 → クラウド
       await pushToCloud({ silent });
+    } else {
+      if (!silent) toast('☁ 同期済（変更なし）');
     }
     state.settings.lastPulledAt = Date.now();
     saveStateLocalOnly();
