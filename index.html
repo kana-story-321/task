@@ -513,6 +513,31 @@
   }
   details.collapse[open] > summary::after { transform: rotate(180deg); }
 
+  /* ─── Category filter (topbar) ─ */
+  .cat-filter-wrap { position: relative; }
+  .cat-filter-btn {
+    height: 36px; padding: 0 12px; border-radius: 18px;
+    background: var(--card); border: 1px solid var(--line);
+    font-size: 12px; font-weight: 700; color: var(--ink);
+    cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+    transition: all 0.15s;
+  }
+  .cat-filter-btn:hover { background: var(--line-2); }
+  .cat-filter-btn.active { background: var(--brand); color: white; border-color: var(--brand); }
+  .cat-filter-menu {
+    position: absolute; top: calc(100% + 4px); right: 0;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; box-shadow: var(--shadow-lg);
+    min-width: 160px; z-index: 100; padding: 4px;
+  }
+  .cat-filter-menu a {
+    display: block; padding: 8px 12px; border-radius: 6px;
+    font-size: 13px; font-weight: 600; color: var(--ink);
+    cursor: pointer; text-decoration: none;
+  }
+  .cat-filter-menu a:hover { background: var(--line-2); }
+  .cat-filter-menu a.active { background: var(--brand); color: white; }
+
   /* ─── Sync badge ─ */
   .sync-badge {
     display: inline-flex; align-items: center; gap: 5px;
@@ -619,6 +644,17 @@
       <span>My Task</span>
     </h1>
     <div class="top-actions">
+      <div class="cat-filter-wrap" id="catFilterWrap">
+        <button class="cat-filter-btn" id="catFilterBtn" title="ジャンルでフィルタ">
+          <span id="catFilterLabel">すべて</span> <span style="font-size:9px; opacity:0.7">▼</span>
+        </button>
+        <div class="cat-filter-menu" id="catFilterMenu" style="display:none">
+          <a data-cat="all">📋 すべて</a>
+          <a data-cat="work">🏢 仕事</a>
+          <a data-cat="private">🏠 プライベート</a>
+          <a data-cat="none">⚪ 未分類のみ</a>
+        </div>
+      </div>
       <div id="syncBadge" class="sync-badge" title="クラウド同期" style="display:none"></div>
       <button class="icon-btn" id="btnSettings" title="設定">⚙</button>
     </div>
@@ -786,15 +822,25 @@
       <input type="text" id="taskTitle" placeholder="やること">
     </div>
 
-    <div class="field">
-      <label>ステータス</label>
-      <select id="taskStatus">
-        <option value="mine">🔴 マイボール対応中</option>
-        <option value="theirs">🟡 相手ボール（返事待ち）</option>
-        <option value="soon">🔵 早くやりたい（未着手）</option>
-        <option value="idea">💡 アイディア（いつかやりたい）</option>
-        <option value="done">✓ 完了</option>
-      </select>
+    <div class="row row-2">
+      <div class="field">
+        <label>ステータス</label>
+        <select id="taskStatus">
+          <option value="mine">🔴 マイボール対応中</option>
+          <option value="theirs">🟡 相手ボール（返事待ち）</option>
+          <option value="soon">🔵 早くやりたい（未着手）</option>
+          <option value="idea">💡 アイディア（いつかやりたい）</option>
+          <option value="done">✓ 完了</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>ジャンル</label>
+        <select id="taskCategory">
+          <option value="">未分類</option>
+          <option value="work">🏢 仕事</option>
+          <option value="private">🏠 プライベート</option>
+        </select>
+      </div>
     </div>
 
     <div class="row row-2">
@@ -957,11 +1003,12 @@
     <div class="help" style="margin-bottom:10px; line-height:1.7">
       <b>ヘッダ行（1行目）に項目名</b>を入れてください。順番は自由・列の追加もOK・不要な列は省略可。<br>
       認識する項目名: <span class="kbd">タイトル</span> <span class="kbd">ステータス</span>
-      <span class="kbd">期日</span> <span class="kbd">案件</span>
+      <span class="kbd">ジャンル</span> <span class="kbd">期日</span> <span class="kbd">案件</span>
       <span class="kbd">相手先</span> <span class="kbd">今日</span> <span class="kbd">メモ</span>
       <br>
       ステータス候補: <span class="kbd">マイボール</span> <span class="kbd">相手待ち</span>
-      <span class="kbd">早くやりたい</span> <span class="kbd">アイディア</span> <span class="kbd">完了</span>（英語コード mine/theirs/soon/idea/done でも可）
+      <span class="kbd">早くやりたい</span> <span class="kbd">アイディア</span> <span class="kbd">完了</span><br>
+      ジャンル候補: <span class="kbd">仕事</span> <span class="kbd">プライベート</span>
     </div>
 
     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px">
@@ -1071,24 +1118,6 @@
       <summary>⏰ 予定アラーム</summary>
       <div style="margin-top:10px">
 
-        <div style="background:#e8f5e9; padding:10px; border-radius:8px; margin-bottom:12px">
-          <div style="font-size:13px; font-weight:700; color:#2d6e2d; margin-bottom:4px">
-            ✅ 推奨: Googleカレンダーの通知を使う（端末スリープ中もOK）
-          </div>
-          <div style="font-size:11px; color:var(--ink-2); line-height:1.7">
-            ① スマホに <b>Google カレンダー アプリ</b> をインストール<br>
-            ② アプリの設定で「<b>通知</b>」を有効化（音/バイブもON）<br>
-            ③ Googleカレンダー側で「<b>既定の通知: 10分前</b>」を設定<br>
-            　 (Web版で 設定 → カレンダーの設定 → 既定の通知)<br>
-            <br>
-            <b>このアプリで「完了 ◯」を押した予定は、自動的に Google カレンダー側の通知も
-            キャンセルします</b>（GAS経由）。なので、完了済みは鳴りません。
-          </div>
-        </div>
-
-        <div style="font-size:12px; font-weight:700; margin-bottom:6px; color:var(--ink-2)">
-          🌐 ブラウザ通知（補助：アプリ起動中のみ）
-        </div>
         <div class="field">
           <label><input type="checkbox" id="alarmEnabled"> 起動中なら指定分前にブラウザ通知＋音</label>
         </div>
@@ -1287,6 +1316,7 @@ function defaultState() {
     _meta: { lastModified: 0 },
     taskFilter: 'all',
     taskSort: 'default',
+    categoryFilter: 'all',  // 'all' | 'work' | 'private' | 'none'
   };
 }
 // 内部保存のみ（クラウドpushしない / pull時の上書きに使用）
@@ -1364,6 +1394,53 @@ function toast(msg, ms = 1800) {
 /* ──────────────────────────────────────────────────────────
  * NAV
  * ────────────────────────────────────────────────────────── */
+/* ─── ジャンルフィルタ（全画面共通） ─ */
+function getCategoryFilter() { return state.categoryFilter || 'all'; }
+function applyCategoryFilter(tasks) {
+  const f = getCategoryFilter();
+  if (f === 'all') return tasks;
+  if (f === 'none') return tasks.filter(t => !t.category);
+  return tasks.filter(t => t.category === f);
+}
+function updateCategoryFilterUI() {
+  const f = getCategoryFilter();
+  const label = $('#catFilterLabel');
+  const btn = $('#catFilterBtn');
+  if (!label || !btn) return;
+  const map = { all: '📋 すべて', work: '🏢 仕事', private: '🏠 プライベート', none: '⚪ 未分類' };
+  label.textContent = map[f] || 'すべて';
+  btn.classList.toggle('active', f !== 'all');
+  $$('#catFilterMenu a').forEach(a => a.classList.toggle('active', a.dataset.cat === f));
+}
+function setCategoryFilter(cat) {
+  state.categoryFilter = cat;
+  saveState();
+  updateCategoryFilterUI();
+  renderAll();
+}
+
+// クリック関連
+document.addEventListener('click', (e) => {
+  if (e.target.closest('#catFilterBtn')) {
+    e.stopPropagation();
+    const menu = $('#catFilterMenu');
+    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+    return;
+  }
+  const catSel = e.target.closest('#catFilterMenu a');
+  if (catSel) {
+    e.preventDefault();
+    setCategoryFilter(catSel.dataset.cat);
+    $('#catFilterMenu').style.display = 'none';
+    return;
+  }
+  // 外クリックで閉じる
+  if (!e.target.closest('.cat-filter-wrap')) {
+    const menu = $('#catFilterMenu');
+    if (menu) menu.style.display = 'none';
+  }
+});
+
 function goto(page) {
   $$('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.page === page));
   $$('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + page));
@@ -1398,6 +1475,7 @@ function newTask(partial = {}) {
     id: uid(),
     title: '',
     status: 'mine',
+    category: '',          // '' (未分類) / 'work' / 'private'
     projectId: '',
     isToday: false,
     dueDate: '',
@@ -1408,6 +1486,12 @@ function newTask(partial = {}) {
     ...partial,
   };
 }
+
+const CATEGORIES = {
+  '':        { label: '未分類',        icon: '',   color: '#9aa5b1' },
+  'work':    { label: '仕事',          icon: '🏢', color: '#2980b9' },
+  'private': { label: 'プライベート',  icon: '🏠', color: '#27ae60' },
+};
 
 function addTaskQuick(title) {
   const t = newTask({ title: title.trim() });
@@ -1424,6 +1508,7 @@ function openTaskModal(task) {
   $('#taskId').value = task.id;
   $('#taskTitle').value = task.title;
   $('#taskStatus').value = task.status;
+  $('#taskCategory').value = task.category || '';
   $('#taskDue').value = task.dueDate || '';
   $('#taskPartner').value = task.partner || '';
   $('#taskIsToday').checked = !!task.isToday;
@@ -1443,6 +1528,7 @@ function openTaskModal(task) {
       ...task,
       title: $('#taskTitle').value.trim(),
       status: $('#taskStatus').value,
+      category: $('#taskCategory').value,
       projectId: $('#taskProject').value,
       dueDate: $('#taskDue').value,
       partner: $('#taskPartner').value.trim(),
@@ -1516,6 +1602,9 @@ function renderTaskCard(t) {
     ? `<span class="chip prj" style="background:${esc(proj.color||'#e8f0fa')}22; color:${esc(proj.color||'#2d5a8f')}">▦ ${esc(proj.name)}</span>` : '';
   const todayChip = t.isToday && t.status !== 'done'
     ? `<span class="chip today">★ 今日</span>` : '';
+  const cat = CATEGORIES[t.category || ''];
+  const catChip = (t.category && cat)
+    ? `<span class="chip" style="background:${esc(cat.color)}22; color:${esc(cat.color)}; font-weight:700">${cat.icon} ${esc(cat.label)}</span>` : '';
 
   return `
     <div class="task s-${t.status}" data-id="${t.id}">
@@ -1523,7 +1612,7 @@ function renderTaskCard(t) {
       <div class="body" data-act="edit">
         <div class="title">${esc(t.title)}</div>
         <div class="meta">
-          ${projChip} ${todayChip} ${dueChip} ${partnerChip}
+          ${catChip} ${projChip} ${todayChip} ${dueChip} ${partnerChip}
         </div>
       </div>
       <div class="actions">
@@ -1916,10 +2005,12 @@ function renderAll() {
   renderProjects();
   renderKpi();
   renderTopBadge();
+  updateCategoryFilterUI();
 }
 
 function renderTopBadge() {
-  const todayCount = state.tasks.filter(t => t.status !== 'done' && (t.isToday || isDueToday(t))).length;
+  const filtTasks = applyCategoryFilter(state.tasks);
+  const todayCount = filtTasks.filter(t => t.status !== 'done' && (t.isToday || isDueToday(t))).length;
   const el = $('#badgeToday');
   if (todayCount > 0) { el.style.display = 'inline-block'; el.textContent = todayCount; }
   else el.style.display = 'none';
@@ -1944,15 +2035,16 @@ function renderToday() {
   $('#todayDate').textContent = fmtJpDateLong(now);
   $('#todayGreet').textContent = greet + '。';
 
-  const todayList = state.tasks.filter(t => t.status !== 'done' && (t.isToday || isDueToday(t) || isOverdue(t)));
-  const mineList = state.tasks.filter(t => t.status === 'mine').slice(0, 8);
-  const theirsList = state.tasks.filter(t => t.status === 'theirs').slice(0, 8);
+  const filtTasks = applyCategoryFilter(state.tasks);
+  const todayList = filtTasks.filter(t => t.status !== 'done' && (t.isToday || isDueToday(t) || isOverdue(t)));
+  const mineList = filtTasks.filter(t => t.status === 'mine').slice(0, 8);
+  const theirsList = filtTasks.filter(t => t.status === 'theirs').slice(0, 8);
   const mtgs = state.meetings
     .filter(m => m.date === ymd(today()))
     .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 
   // summary text
-  const overdue = state.tasks.filter(t => isOverdue(t)).length;
+  const overdue = filtTasks.filter(t => isOverdue(t)).length;
   const parts = [];
   if (todayList.length) parts.push(`今日やるタスク <b>${todayList.length}</b> 件`);
   if (overdue) parts.push(`<b>期限超過 ${overdue} 件</b>`);
@@ -1962,8 +2054,8 @@ function renderToday() {
     : '今日のタスク・予定はありません 🎉';
 
   $('#qsToday').textContent = todayList.length;
-  $('#qsMine').textContent = state.tasks.filter(t => t.status === 'mine').length;
-  $('#qsTheirs').textContent = state.tasks.filter(t => t.status === 'theirs').length;
+  $('#qsMine').textContent = filtTasks.filter(t => t.status === 'mine').length;
+  $('#qsTheirs').textContent = filtTasks.filter(t => t.status === 'theirs').length;
   $('#qsMtg').textContent = mtgs.length;
 
   // meetings
@@ -1979,20 +2071,20 @@ function renderToday() {
     : `<div class="empty">今日やるタスクはありません。タスク画面で <span class="kbd">☆</span> を押すと今日リストに追加されます。</div>`;
 
   // mine
-  $('#cntMineList').textContent = state.tasks.filter(t => t.status === 'mine').length;
+  $('#cntMineList').textContent = filtTasks.filter(t => t.status === 'mine').length;
   $('#mineList').innerHTML = mineList.length
     ? mineList.map(renderTaskCard).join('')
     : `<div class="empty">マイボールのタスクはありません</div>`;
 
   // theirs
-  $('#cntTheirsList').textContent = state.tasks.filter(t => t.status === 'theirs').length;
+  $('#cntTheirsList').textContent = filtTasks.filter(t => t.status === 'theirs').length;
   $('#theirsList').innerHTML = theirsList.length
     ? theirsList.map(renderTaskCard).join('')
     : `<div class="empty">相手ボールのタスクはありません</div>`;
 
-  // 催促対象: theirs かつ 期日が本日 or 過ぎている
+  // 催促対象: theirs かつ 期日が本日 or 過ぎている (カテゴリフィルタも反映)
   const todayStr = ymd(today());
-  const followups = state.tasks.filter(t =>
+  const followups = filtTasks.filter(t =>
     t.status === 'theirs' && t.dueDate && t.dueDate <= todayStr
   ).sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
   $('#cntFollowup').textContent = followups.length;
@@ -2128,7 +2220,7 @@ function renderTasks() {
   const filter = state.taskFilter;
   $$('#taskFilter .pill').forEach(p => p.classList.toggle('active', p.dataset.status === filter));
 
-  let list = [...state.tasks];
+  let list = applyCategoryFilter(state.tasks);
   if (filter === 'all')       list = list.filter(t => t.status !== 'done');
   else if (filter === 'done') list = list.filter(t => t.status === 'done');
   else                        list = list.filter(t => t.status === filter);
@@ -2187,11 +2279,12 @@ $('#btnImportCsv').addEventListener('click', () => openCsvModal());
  * CSV IMPORT
  * ────────────────────────────────────────────────────────── */
 const CSV_SAMPLE =
-`タイトル,ステータス,期日,案件,相手先,今日,メモ
-提案資料の修正,マイボール,2026-05-25,新サービス導入PJ,,はい,要レビュー
-見積もり回答待ち,相手待ち,2026-05-23,新サービス導入PJ,◯◯商事 山田様,,担当へ確認連絡済
-新人研修の構成案,早くやりたい,,,,,
-業務効率化アイディア,アイディア,,,,,DXツールの選定`;
+`タイトル,ステータス,ジャンル,期日,案件,相手先,今日,メモ
+提案資料の修正,マイボール,仕事,2026-05-25,新サービス導入PJ,,はい,要レビュー
+見積もり回答待ち,相手待ち,仕事,2026-05-23,新サービス導入PJ,◯◯商事 山田様,,担当へ確認連絡済
+病院の予約,早くやりたい,プライベート,,,,,
+新人研修の構成案,早くやりたい,仕事,,,,,
+業務効率化アイディア,アイディア,仕事,,,,,DXツールの選定`;
 
 // 1行をパース（クォート対応の単純CSVパーサ）
 function parseCsv(text) {
@@ -2224,11 +2317,16 @@ function parseCsv(text) {
 const HEADER_MAP = {
   'タイトル': 'title', '内容': 'title', '件名': 'title', 'タスク': 'title', 'title': 'title',
   'ステータス': 'status', '状態': 'status', 'status': 'status',
+  'ジャンル': 'category', '分類': 'category', 'カテゴリ': 'category', 'category': 'category',
   '期日': 'dueDate', '期限': 'dueDate', '締切': 'dueDate', 'due': 'dueDate', 'duedate': 'dueDate',
   '案件': 'projectName', 'プロジェクト': 'projectName', 'project': 'projectName',
   '相手先': 'partner', '相手': 'partner', 'partner': 'partner',
   '今日': 'isToday', '今日やる': 'isToday', 'today': 'isToday',
   'メモ': 'notes', '備考': 'notes', 'notes': 'notes',
+};
+const CATEGORY_MAP = {
+  '': '', '仕事': 'work', '会社': 'work', 'work': 'work', 'business': 'work',
+  'プライベート': 'private', 'private': 'private', '私用': 'private', '個人': 'private',
 };
 
 const STATUS_MAP = {
@@ -2292,9 +2390,12 @@ function csvRowsToTasks(rows) {
       else errors.push(`${i+1}行目: 案件「${obj.projectName}」が見つかりません (なし扱い)`);
     }
 
+    const rawCat = (obj.category || '').trim();
+    const cat = CATEGORY_MAP[rawCat] !== undefined ? CATEGORY_MAP[rawCat] : (CATEGORY_MAP[rawCat.toLowerCase()] || '');
     tasks.push(newTask({
       title: obj.title,
       status: status,
+      category: cat,
       dueDate: normDate(obj.dueDate || ''),
       projectId,
       partner: obj.partner || '',
@@ -2332,11 +2433,13 @@ function previewCsv(text) {
 
   const previewRows = tasks.slice(0, 20).map((t, i) => {
     const proj = state.projects.find(p => p.id === t.projectId);
+    const cat = CATEGORIES[t.category || ''];
     return `
       <tr>
         <td>${i+1}</td>
         <td>${esc(t.title)}</td>
         <td><span class="chip s-${t.status}" style="font-size:10px">${esc(statusLabel(t.status))}</span></td>
+        <td>${cat?.icon || ''} ${esc(cat?.label || '')}</td>
         <td>${esc(t.dueDate || '—')}</td>
         <td>${esc(proj?.name || '—')}</td>
         <td>${esc(t.partner || '—')}</td>
@@ -2358,6 +2461,7 @@ function previewCsv(text) {
             <th style="padding:6px 8px; text-align:left">#</th>
             <th style="padding:6px 8px; text-align:left">タイトル</th>
             <th style="padding:6px 8px; text-align:left">ステータス</th>
+            <th style="padding:6px 8px; text-align:left">ジャンル</th>
             <th style="padding:6px 8px; text-align:left">期日</th>
             <th style="padding:6px 8px; text-align:left">案件</th>
             <th style="padding:6px 8px; text-align:left">相手</th>
@@ -3145,6 +3249,34 @@ function updateSyncButtonVisibility() {
   if (btn) btn.style.display = state.settings.gasUrl ? '' : 'none';
 }
 
+// 重複予定の統合 (日付+時刻+件名 が同じものは情報量が多い方を残す)
+function dedupeStateMeetings() {
+  const before = state.meetings.length;
+  const groups = new Map();
+  state.meetings.forEach(m => {
+    const key = `${m.date || ''}|${m.time || ''}|${(m.title || '').trim()}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(m);
+  });
+  const score = (m) => (m.partner ? 2 : 0)
+                    + (m.meetingUrl ? 2 : 0)
+                    + ((m.notes || '').length > 0 ? 1 : 0)
+                    + (m.email ? 1 : 0);
+  const keep = [];
+  groups.forEach(arr => {
+    if (arr.length === 1) { keep.push(arr[0]); return; }
+    // 情報量が多い順 → 同点なら手動編集（externalIdなし）を優先
+    arr.sort((a, b) => {
+      const diff = score(b) - score(a);
+      if (diff !== 0) return diff;
+      return (a.externalId ? 1 : 0) - (b.externalId ? 1 : 0);
+    });
+    keep.push(arr[0]);
+  });
+  state.meetings = keep;
+  return before - keep.length;
+}
+
 async function loadCalendarList() {
   const url = state.settings.gasUrl;
   if (!url) { toast('⚙ GAS URL を入力してください'); return; }
@@ -3284,8 +3416,16 @@ async function syncCalendar({ silent = false } = {}) {
     saveState();
     updateGasStatus();
     renderAll();
-    if (!silent) toast(`✅ 同期完了 (+${added} / ↻${updated}${skipped ? ' / 非表示' + skipped : ''})`);
-    return { ok: true, added, updated, skipped };
+    // 重複予定をマージ (日付+時刻+件名 が同じものは1つに)
+    const removed = dedupeStateMeetings();
+    if (!silent) {
+      let msg = `✅ 同期完了 (+${added} / ↻${updated}`;
+      if (skipped) msg += ` / 非表示${skipped}`;
+      if (removed) msg += ` / 重複削除${removed}`;
+      msg += ')';
+      toast(msg);
+    }
+    return { ok: true, added, updated, skipped, removed };
   } catch (err) {
     console.error('sync failed', err);
     if (!silent) toast('❌ 同期失敗: ' + err.message);
@@ -3439,6 +3579,12 @@ const _isFreshSetup = _hashResult === 'fresh';
 // クラウド同期中はサンプルデータ作成しない（クラウドが正）
 if (!_hashResult && !state.settings.syncEnabled) {
   bootstrapDemo();
+}
+// 起動時の重複予定クリーンアップ（過去データの整理）
+const _removedDupes = dedupeStateMeetings();
+if (_removedDupes > 0) {
+  saveStateLocalOnly();
+  console.log('[dedup] removed', _removedDupes, 'duplicate meetings on boot');
 }
 renderAll();
 updateSyncButtonVisibility();
