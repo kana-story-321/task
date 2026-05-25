@@ -268,9 +268,10 @@
   .pill.active { background: var(--brand); color: white; border-color: var(--brand); }
   .pill.active .dot { background: white; }
   /* カテゴリピル: アクティブ時の色 */
-  #categoryFilterPills .pill[data-cat="work"].active    { background: #2980b9; border-color: #2980b9; }
-  #categoryFilterPills .pill[data-cat="private"].active { background: #27ae60; border-color: #27ae60; }
-  #categoryFilterPills .pill[data-cat="none"].active    { background: #6c7a89; border-color: #6c7a89; }
+  #categoryFilterPills .pill[data-cat="tack"].active      { background: #2980b9; border-color: #2980b9; color: white; }
+  #categoryFilterPills .pill[data-cat="private"].active   { background: #27ae60; border-color: #27ae60; color: white; }
+  #categoryFilterPills .pill[data-cat="mottainai"].active { background: #e67e22; border-color: #e67e22; color: white; }
+  #categoryFilterPills .pill[data-cat="none"].active      { background: #6c7a89; border-color: #6c7a89; color: white; }
 
   /* ─── Project card ───────────────────────── */
   .proj {
@@ -654,8 +655,9 @@
         </button>
         <div class="cat-filter-menu" id="catFilterMenu" style="display:none">
           <a data-cat="all">📋 すべて</a>
-          <a data-cat="work">🏢 仕事</a>
-          <a data-cat="private">🏠 プライベート</a>
+          <a data-cat="tack">🏢 Tack</a>
+          <a data-cat="private">🏠 Private</a>
+          <a data-cat="mottainai">💎 Mottainai</a>
           <a data-cat="none">⚪ 未分類のみ</a>
         </div>
       </div>
@@ -770,8 +772,9 @@
     <div class="pills" id="categoryFilterPills" style="margin-top:-4px">
       <span style="font-size:11px; font-weight:700; color:var(--ink-3); align-self:center; padding:0 4px">ジャンル:</span>
       <button class="pill" data-cat="all">📋 すべて</button>
-      <button class="pill" data-cat="work">🏢 仕事</button>
-      <button class="pill" data-cat="private">🏠 プライベート</button>
+      <button class="pill" data-cat="tack">🏢 Tack</button>
+      <button class="pill" data-cat="private">🏠 Private</button>
+      <button class="pill" data-cat="mottainai">💎 Mottainai</button>
       <button class="pill" data-cat="none">⚪ 未分類</button>
     </div>
 
@@ -849,8 +852,9 @@
         <label>ジャンル</label>
         <select id="taskCategory">
           <option value="">未分類</option>
-          <option value="work">🏢 仕事</option>
-          <option value="private">🏠 プライベート</option>
+          <option value="tack">🏢 Tack</option>
+          <option value="private">🏠 Private</option>
+          <option value="mottainai">💎 Mottainai</option>
         </select>
       </div>
     </div>
@@ -1020,7 +1024,7 @@
       <br>
       ステータス候補: <span class="kbd">マイボール</span> <span class="kbd">相手待ち</span>
       <span class="kbd">早くやりたい</span> <span class="kbd">アイディア</span> <span class="kbd">完了</span><br>
-      ジャンル候補: <span class="kbd">仕事</span> <span class="kbd">プライベート</span>
+      ジャンル候補: <span class="kbd">Tack</span> <span class="kbd">Private</span> <span class="kbd">Mottainai</span>
     </div>
 
     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px">
@@ -1297,7 +1301,11 @@ function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return defaultState();
     const parsed = JSON.parse(raw);
-    return { ...defaultState(), ...parsed };
+    const merged = { ...defaultState(), ...parsed };
+    // マイグレーション: 旧 category='work' → 'tack'
+    (merged.tasks || []).forEach(t => { if (t.category === 'work') t.category = 'tack'; });
+    if (merged.categoryFilter === 'work') merged.categoryFilter = 'tack';
+    return merged;
   } catch (e) {
     console.warn('load failed', e);
     return defaultState();
@@ -1418,7 +1426,7 @@ function updateCategoryFilterUI() {
   const f = getCategoryFilter();
   const label = $('#catFilterLabel');
   const btn = $('#catFilterBtn');
-  const map = { all: '📋 すべて', work: '🏢 仕事', private: '🏠 プライベート', none: '⚪ 未分類' };
+  const map = { all: '📋 すべて', tack: '🏢 Tack', private: '🏠 Private', mottainai: '💎 Mottainai', none: '⚪ 未分類' };
   if (label && btn) {
     label.textContent = map[f] || 'すべて';
     btn.classList.toggle('active', f !== 'all');
@@ -1503,9 +1511,10 @@ function newTask(partial = {}) {
 }
 
 const CATEGORIES = {
-  '':        { label: '未分類',        icon: '',   color: '#9aa5b1' },
-  'work':    { label: '仕事',          icon: '🏢', color: '#2980b9' },
-  'private': { label: 'プライベート',  icon: '🏠', color: '#27ae60' },
+  '':          { label: '未分類',    icon: '',   color: '#9aa5b1' },
+  'tack':      { label: 'Tack',      icon: '🏢', color: '#2980b9' },
+  'private':   { label: 'Private',   icon: '🏠', color: '#27ae60' },
+  'mottainai': { label: 'Mottainai', icon: '💎', color: '#e67e22' },
 };
 
 function addTaskQuick(title) {
@@ -2305,11 +2314,11 @@ $('#btnImportCsv').addEventListener('click', () => openCsvModal());
  * ────────────────────────────────────────────────────────── */
 const CSV_SAMPLE =
 `タイトル,ステータス,ジャンル,期日,案件,相手先,今日,メモ
-提案資料の修正,マイボール,仕事,2026-05-25,新サービス導入PJ,,はい,要レビュー
-見積もり回答待ち,相手待ち,仕事,2026-05-23,新サービス導入PJ,◯◯商事 山田様,,担当へ確認連絡済
-病院の予約,早くやりたい,プライベート,,,,,
-新人研修の構成案,早くやりたい,仕事,,,,,
-業務効率化アイディア,アイディア,仕事,,,,,DXツールの選定`;
+提案資料の修正,マイボール,Tack,2026-05-25,新サービス導入PJ,,はい,要レビュー
+見積もり回答待ち,相手待ち,Tack,2026-05-23,新サービス導入PJ,◯◯商事 山田様,,担当へ確認連絡済
+病院の予約,早くやりたい,Private,,,,,
+新人研修の構成案,早くやりたい,Tack,,,,,
+読みたい本リスト整理,アイディア,Mottainai,,,,,後で取り掛かりたいけど…`;
 
 // 1行をパース（クォート対応の単純CSVパーサ）
 function parseCsv(text) {
@@ -2350,8 +2359,13 @@ const HEADER_MAP = {
   'メモ': 'notes', '備考': 'notes', 'notes': 'notes',
 };
 const CATEGORY_MAP = {
-  '': '', '仕事': 'work', '会社': 'work', 'work': 'work', 'business': 'work',
-  'プライベート': 'private', 'private': 'private', '私用': 'private', '個人': 'private',
+  '': '',
+  'tack': 'tack', 'Tack': 'tack', 'TACK': 'tack',
+  '仕事': 'tack', '会社': 'tack', 'work': 'tack', 'business': 'tack',
+  'private': 'private', 'Private': 'private', 'PRIVATE': 'private',
+  'プライベート': 'private', '私用': 'private', '個人': 'private',
+  'mottainai': 'mottainai', 'Mottainai': 'mottainai', 'MOTTAINAI': 'mottainai',
+  'もったいない': 'mottainai',
 };
 
 const STATUS_MAP = {
