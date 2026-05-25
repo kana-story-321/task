@@ -2634,7 +2634,9 @@ document.addEventListener('click', (e) => {
 function buildSetupUrl() {
   if (!state.settings.gasUrl) return '';
   const base = window.location.origin + window.location.pathname;
-  return base + '#sync=' + encodeURIComponent(btoa(state.settings.gasUrl));
+  // キャッシュ破壊用のバージョンクエリを付ける
+  const v = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  return base + '?v=' + v + '#sync=' + encodeURIComponent(btoa(state.settings.gasUrl));
 }
 function refreshSetupUrl() {
   const ta = $('#setupUrlText');
@@ -2840,7 +2842,9 @@ async function pullFromCloud({ silent = true, force = false } = {}) {
       state._meta = { ...(remote._meta || {}), lastModified: remoteTs || Date.now() };
       saveStateLocalOnly();
       renderAll();
-      if (!silent) toast('☁ 最新データを取得しました');
+      const cnt = `タスク${(state.tasks||[]).length} / 案件${(state.projects||[]).length} / 予定${(state.meetings||[]).length}`;
+      if (!silent) toast('☁ 取得しました ' + cnt);
+      console.log('[sync] pulled:', cnt);
     } else if (pushUp) {
       // 端末 → クラウド
       await pushToCloud({ silent });
