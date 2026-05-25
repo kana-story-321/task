@@ -2056,7 +2056,11 @@ function renderToday() {
   const theirsList = filtTasks.filter(t => t.status === 'theirs').slice(0, 8);
   const mtgs = state.meetings
     .filter(m => m.date === ymd(today()))
-    .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    .sort((a, b) => {
+      // 終日予定は先頭に
+      if (a.allDay !== b.allDay) return a.allDay ? -1 : 1;
+      return (a.time || '').localeCompare(b.time || '');
+    });
 
   // summary text
   const overdue = filtTasks.filter(t => isOverdue(t)).length;
@@ -2137,12 +2141,15 @@ function renderFollowupCard(t) {
 
 function renderMeetingCard(m) {
   const fromCal = !!m.externalId;
+  const timeBadge = m.allDay
+    ? `<div class="mtg-time" style="background:#fff4e0; color:#b8770a; padding:3px 10px; border-radius:6px; display:inline-block; font-size:13px">📌 終日</div>`
+    : `<div class="mtg-time">⏰ ${esc(m.time || '--:--')}</div>`;
   return `
     <div class="mtg" data-mtg-id="${m.id}">
       <div class="mtg-head">
         <div class="mtg-check" data-mtg-done="${m.id}" title="完了 (Googleカレンダーには影響しません)"></div>
         <div style="flex:1; min-width:0">
-          <div class="mtg-time">⏰ ${esc(m.time || '--:--')}</div>
+          ${timeBadge}
           <div class="mtg-title">${esc(m.title || '(件名なし)')}</div>
           ${m.partner ? `<div class="mtg-partner">👤 ${esc(m.partner)}</div>` : ''}
           ${m.meetingUrl ? `<div class="mtg-url">🔗 ${esc(m.meetingUrl)}</div>` : ''}
@@ -3043,6 +3050,7 @@ function checkAlarms() {
   let dirty = false;
   (state.meetings || []).forEach(m => {
     if (m.date !== todayStr || !m.time || m.notified) return;
+    if (m.allDay) return; // 終日予定はアラーム対象外
     const meetingTime = new Date(m.date + 'T' + m.time + ':00').getTime();
     if (isNaN(meetingTime)) return;
     const remindAt = meetingTime - min * 60 * 1000;
@@ -3403,7 +3411,6 @@ async function syncCalendar({ silent = false } = {}) {
     const hidden = new Set(state.settings.hiddenExternalIds || []);
     let added = 0, updated = 0, skipped = 0;
     events.forEach(ev => {
-      if (ev.allDay) return; // 終日予定は対象外（必要なら外す）
       if (hidden.has(ev.id)) { skipped++; return; }
       const existing = state.meetings.find(m => m.externalId === ev.id);
       const payload = {
@@ -3416,6 +3423,7 @@ async function syncCalendar({ silent = false } = {}) {
         notes: ev.notes || '',
         externalId: ev.id,
         calendarId: ev.calendarId || '',
+        allDay: !!ev.allDay,
         source: 'gcal',
       };
       if (existing) {
