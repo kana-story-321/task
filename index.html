@@ -267,6 +267,10 @@
   .pill.s-idea .dot   { background: var(--idea); }
   .pill.active { background: var(--brand); color: white; border-color: var(--brand); }
   .pill.active .dot { background: white; }
+  /* カテゴリピル: アクティブ時の色 */
+  #categoryFilterPills .pill[data-cat="work"].active    { background: #2980b9; border-color: #2980b9; }
+  #categoryFilterPills .pill[data-cat="private"].active { background: #27ae60; border-color: #27ae60; }
+  #categoryFilterPills .pill[data-cat="none"].active    { background: #6c7a89; border-color: #6c7a89; }
 
   /* ─── Project card ───────────────────────── */
   .proj {
@@ -761,6 +765,14 @@
       <button class="pill s-soon"   data-status="soon">🔵 早くやりたい</button>
       <button class="pill s-idea"   data-status="idea">💡 アイディア</button>
       <button class="pill" data-status="done">✓ 完了</button>
+    </div>
+
+    <div class="pills" id="categoryFilterPills" style="margin-top:-4px">
+      <span style="font-size:11px; font-weight:700; color:var(--ink-3); align-self:center; padding:0 4px">ジャンル:</span>
+      <button class="pill" data-cat="all">📋 すべて</button>
+      <button class="pill" data-cat="work">🏢 仕事</button>
+      <button class="pill" data-cat="private">🏠 プライベート</button>
+      <button class="pill" data-cat="none">⚪ 未分類</button>
     </div>
 
     <div class="section">
@@ -1406,11 +1418,14 @@ function updateCategoryFilterUI() {
   const f = getCategoryFilter();
   const label = $('#catFilterLabel');
   const btn = $('#catFilterBtn');
-  if (!label || !btn) return;
   const map = { all: '📋 すべて', work: '🏢 仕事', private: '🏠 プライベート', none: '⚪ 未分類' };
-  label.textContent = map[f] || 'すべて';
-  btn.classList.toggle('active', f !== 'all');
-  $$('#catFilterMenu a').forEach(a => a.classList.toggle('active', a.dataset.cat === f));
+  if (label && btn) {
+    label.textContent = map[f] || 'すべて';
+    btn.classList.toggle('active', f !== 'all');
+    $$('#catFilterMenu a').forEach(a => a.classList.toggle('active', a.dataset.cat === f));
+  }
+  // タスク画面のピルも同期
+  $$('#categoryFilterPills .pill').forEach(p => p.classList.toggle('active', p.dataset.cat === f));
 }
 function setCategoryFilter(cat) {
   state.categoryFilter = cat;
@@ -2252,6 +2267,9 @@ $$('#taskFilter .pill').forEach(p => p.addEventListener('click', () => {
   state.taskFilter = p.dataset.status;
   saveState();
   renderTasks();
+}));
+$$('#categoryFilterPills .pill').forEach(p => p.addEventListener('click', () => {
+  setCategoryFilter(p.dataset.cat);
 }));
 $('#taskSortBy').addEventListener('change', (e) => {
   state.taskSort = e.target.value;
