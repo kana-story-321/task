@@ -2709,7 +2709,7 @@ document.addEventListener('click', (e) => {
     state._meta = state._meta || {};
     state._meta.lastModified = Date.now(); // 強制的に最新化してクラウドへ反映
     saveStateLocalOnly();
-    pushToCloud({ silent: false });
+    pushToCloud({ silent: false, force: true });
   }
 });
 
@@ -2719,6 +2719,7 @@ document.addEventListener('click', (e) => {
 let _pushTimer = null;
 let _pushInFlight = false;
 let _pushPending  = false;
+let _pullDoneOnce = false; // 初回 pull 成功まで push をブロック（空データの誤上書き防止）
 
 function setSyncBadge(status, label) {
   const b = $('#syncBadge');
@@ -2756,12 +2757,21 @@ function updateSyncInfo() {
 
 function schedulePush() {
   if (!state.settings.gasUrl || !state.settings.syncEnabled) return;
+  if (!_pullDoneOnce) {
+    // 起動直後の pull が完了する前に push しない（誤って空データを送らないため）
+    console.log('[sync] push deferred: waiting for initial pull');
+    return;
+  }
   clearTimeout(_pushTimer);
   _pushTimer = setTimeout(() => pushToCloud(), 2500);
 }
 
-async function pushToCloud({ silent = true } = {}) {
+async function pushToCloud({ silent = true, force = false } = {}) {
   if (!state.settings.gasUrl || !state.settings.syncEnabled) return;
+  if (!force && !_pullDoneOnce) {
+    console.log('[sync] push blocked: waiting for initial pull');
+    return;
+  }
   if (_pushInFlight) { _pushPending = true; return; }
   _pushInFlight = true;
   setSyncBadge('syncing', '☁ 保存中…');
@@ -2825,9 +2835,8 @@ async function pullFromCloud({ silent = true, force = false } = {}) {
       (remoteHas && !localHas) ||
       (remoteHas && remoteTs > localTs);
     const pushUp =
-      !force &&
-      ((!remoteHas && localHas) ||
-       (localHas && localTs > remoteTs && !remoteHas));
+      !force && !pullDown && localHas &&
+      ((!remoteHas) || (localTs > remoteTs));
 
     console.log('[sync] pull decision:',
       { remoteHas, localHas, remoteTs, localTs, force, pullDown, pushUp });
@@ -2855,6 +2864,7 @@ async function pullFromCloud({ silent = true, force = false } = {}) {
     saveStateLocalOnly();
     updateSyncBadge();
     updateSyncInfo();
+    _pullDoneOnce = true; // 以降は push 可
   } catch (err) {
     console.error('pull failed', err);
     setSyncBadge('error', '⚠ 同期失敗');
@@ -3142,6 +3152,15 @@ function bootstrapDemo() {
   saveState();
 }
 
+// Service Worker 登録 (キャッシュ問題回避)
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js')
+      .then(() => console.log('[sw] registered'))
+      .catch(err => console.warn('[sw] register failed', err));
+  });
+}
+
 // URL ハッシュからのセットアップ (#sync=base64) → 他端末からの自動設定
 function applyHashConfig() {
   if (!window.location.hash) return false;
@@ -3150,14 +3169,17 @@ function applyHashConfig() {
   try {
     const decoded = atob(decodeURIComponent(m[1]));
     if (decoded.startsWith('https://script.google.com/')) {
-      // 新端末セットアップ: ローカル状態を完全リセットしてクラウドから取得する
-      // (古いサンプルデータを誤ってクラウドに送信しないため)
-      state = defaultState();
-      state.settings.gasUrl = decoded;
-      state.settings.syncEnabled = true;
-      saveStateLocalOnly();
+      // すでに同じURLでセットアップ済みなら、リセットしない (ホーム画面起動時にデータが消える事故を防止)
+      const alreadySetUp = state.settings.gasUrl === decoded && state.settings.syncEnabled;
+      if (!alreadySetUp) {
+        // 新端末セットアップ: ローカル状態を完全リセットしてクラウドから取得
+        state = defaultState();
+        state.settings.gasUrl = decoded;
+        state.settings.syncEnabled = true;
+        saveStateLocalOnly();
+      }
       history.replaceState(null, '', window.location.pathname + window.location.search);
-      return true;
+      return alreadySetUp ? 'already' : 'fresh';
     }
   } catch (e) {
     console.warn('hash config invalid', e);
@@ -3165,10 +3187,11 @@ function applyHashConfig() {
   return false;
 }
 
-const _hashApplied = applyHashConfig();
+const _hashResult = applyHashConfig();  // 'fresh' | 'already' | false
+const _isFreshSetup = _hashResult === 'fresh';
 
 // クラウド同期中はサンプルデータ作成しない（クラウドが正）
-if (!_hashApplied && !state.settings.syncEnabled) {
+if (!_hashResult && !state.settings.syncEnabled) {
   bootstrapDemo();
 }
 renderAll();
@@ -3178,8 +3201,10 @@ updateSyncBadge();
 // 起動時: クラウド同期 ON ならまず pull (最新データ取得)
 (async () => {
   if (state.settings.gasUrl && state.settings.syncEnabled) {
-    await pullFromCloud({ silent: _hashApplied ? false : true, force: _hashApplied });
-    if (_hashApplied) toast('☁ 同期設定を適用しました');
+    // 新規セットアップ時は force=true でクラウドの内容に上書き
+    // 既存端末はタイムスタンプ比較で適切に判定
+    await pullFromCloud({ silent: !_isFreshSetup, force: _isFreshSetup });
+    if (_isFreshSetup) toast('☁ 同期設定を適用しました');
   }
   // カレンダー自動同期 (起動時)
   if (state.settings.gasUrl && state.settings.gasAutoSync) {
