@@ -1068,6 +1068,37 @@
     </div>
 
     <details class="collapse" open>
+      <summary>⏰ 予定アラーム（10分前に通知）</summary>
+      <div style="margin-top:10px">
+        <div class="field">
+          <label><input type="checkbox" id="alarmEnabled"> 予定の指定分前に通知＋音でアラーム</label>
+        </div>
+        <div class="row row-2">
+          <div class="field">
+            <label>何分前に鳴らす</label>
+            <select id="alarmMinutes">
+              <option value="5">5分前</option>
+              <option value="10">10分前</option>
+              <option value="15">15分前</option>
+              <option value="30">30分前</option>
+              <option value="60">1時間前</option>
+            </select>
+          </div>
+          <div class="field" style="display:flex; align-items:flex-end">
+            <button class="btn sm" id="btnAlarmTest" type="button" style="width:100%">🔔 テスト鳴動</button>
+          </div>
+        </div>
+        <div class="help">
+          ⚠ <b>ブラウザが起動している時のみ</b>動作します（タブ閉じ・アプリ完全終了時は鳴りません）<br>
+          iPhone: 「ホーム画面に追加」した PWA + iOS 16.4以降 で通知対応<br>
+          Android: 通常タブ / ホーム画面アイコン どちらでもOK<br>
+          ✅ 完了チェック（◯）を押した予定はアラーム対象外になります
+        </div>
+        <div id="alarmPermStatus" style="margin-top:6px; font-size:11px; color:var(--ink-3)"></div>
+      </div>
+    </details>
+
+    <details class="collapse" open>
       <summary>☁ デバイス間同期 (GAS)</summary>
       <div style="margin-top:10px">
         <div class="help" style="margin-bottom:8px">
@@ -1233,6 +1264,8 @@ function defaultState() {
       syncEnabled: false,   // クラウド同期 ON/OFF
       lastPulledAt: 0,
       lastPushedAt: 0,
+      alarmEnabled: false,  // 予定アラーム ON/OFF
+      alarmMinutesBefore: 10,
     },
     _meta: { lastModified: 0 },
     taskFilter: 'all',
@@ -2630,8 +2663,11 @@ $('#btnSettings').addEventListener('click', () => {
   $('#gasDays').value = state.settings.gasDays || 7;
   $('#gasAutoSync').checked = !!state.settings.gasAutoSync;
   $('#syncEnabled').checked = !!state.settings.syncEnabled;
+  $('#alarmEnabled').checked = !!state.settings.alarmEnabled;
+  $('#alarmMinutes').value = String(state.settings.alarmMinutesBefore || 10);
   updateGasStatus();
   updateSyncInfo();
+  updateAlarmPermStatus();
   refreshSetupUrl();
   renderCalendarPicker();
   openModal('modalSettings');
@@ -2645,6 +2681,17 @@ $('#settingsSave').addEventListener('click', () => {
   state.settings.gasAutoSync = $('#gasAutoSync').checked;
   const wasSyncOn = !!state.settings.syncEnabled;
   state.settings.syncEnabled = $('#syncEnabled').checked;
+  const wasAlarmOn = !!state.settings.alarmEnabled;
+  state.settings.alarmEnabled = $('#alarmEnabled').checked;
+  state.settings.alarmMinutesBefore = Number($('#alarmMinutes').value) || 10;
+  // アラームを初めて ON にしたら通知許可を要求
+  if (!wasAlarmOn && state.settings.alarmEnabled) {
+    requestNotificationPerm(true).then(ok => {
+      updateAlarmPermStatus();
+      if (ok) toast('🔔 アラームを有効化しました');
+    });
+    setTimeout(checkAlarms, 500);
+  }
   saveState();
   updateSyncButtonVisibility();
   updateSyncBadge();
@@ -2744,6 +2791,118 @@ document.addEventListener('click', (e) => {
     saveStateLocalOnly();
     pushToCloud({ silent: false, force: true });
   }
+});
+
+/* ──────────────────────────────────────────────────────────
+ * 予定アラーム（10分前通知）
+ * ────────────────────────────────────────────────────────── */
+async function requestNotificationPerm(showAlert = true) {
+  if (!('Notification' in window)) {
+    if (showAlert) toast('お使いのブラウザは通知に未対応です');
+    return false;
+  }
+  if (Notification.permission === 'granted') return true;
+  if (Notification.permission === 'denied') {
+    if (showAlert) alert('ブラウザの通知設定でブロックされています。ブラウザ設定から「許可」に変更してください。');
+    return false;
+  }
+  const p = await Notification.requestPermission();
+  return p === 'granted';
+}
+
+function updateAlarmPermStatus() {
+  const el = $('#alarmPermStatus');
+  if (!el) return;
+  if (!('Notification' in window)) {
+    el.textContent = '⚠ このブラウザは通知に未対応です';
+    el.style.color = 'var(--danger)';
+  } else if (Notification.permission === 'granted') {
+    el.textContent = '✅ 通知許可: OK';
+    el.style.color = 'var(--ok)';
+  } else if (Notification.permission === 'denied') {
+    el.textContent = '⛔ 通知許可: ブロック中（ブラウザ設定から許可してください）';
+    el.style.color = 'var(--danger)';
+  } else {
+    el.textContent = 'ℹ 通知許可: 未承認（チェックON時に確認します）';
+    el.style.color = 'var(--ink-3)';
+  }
+}
+
+let _alarmCtx = null;
+function playAlarmSound() {
+  try {
+    if (!_alarmCtx) _alarmCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = _alarmCtx;
+    if (ctx.state === 'suspended') ctx.resume();
+    // 3 連ビープ (880Hz)
+    for (let i = 0; i < 3; i++) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain).connect(ctx.destination);
+      osc.frequency.value = 880;
+      osc.type = 'sine';
+      const t = ctx.currentTime + i * 0.35;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.3, t + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+      osc.start(t);
+      osc.stop(t + 0.32);
+    }
+    // バイブ（対応端末のみ）
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
+  } catch (e) { console.warn('alarm sound failed', e); }
+}
+
+function fireMeetingAlarm(m) {
+  const min = state.settings.alarmMinutesBefore || 10;
+  const title = `⏰ ${min}分後に予定が始まります`;
+  const body = `${m.time} ${m.title || '(件名なし)'}${m.partner ? '\n相手: ' + m.partner : ''}`;
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try {
+      const n = new Notification(title, {
+        body,
+        icon: 'favicon-192.png',
+        badge: 'favicon-192.png',
+        tag: 'meeting-' + m.id,
+        requireInteraction: true,
+      });
+      n.onclick = () => { window.focus(); n.close(); };
+    } catch (e) { console.warn('notify failed', e); }
+  }
+  playAlarmSound();
+  toast(`⏰ ${m.time} ${m.title}（${min}分前）`, 6000);
+}
+
+function checkAlarms() {
+  if (!state.settings.alarmEnabled) return;
+  const min = state.settings.alarmMinutesBefore || 10;
+  const now = Date.now();
+  const todayStr = ymd(new Date());
+  let dirty = false;
+  (state.meetings || []).forEach(m => {
+    if (m.date !== todayStr || !m.time || m.notified) return;
+    const meetingTime = new Date(m.date + 'T' + m.time + ':00').getTime();
+    if (isNaN(meetingTime)) return;
+    const remindAt = meetingTime - min * 60 * 1000;
+    // 通知ウィンドウ: アラーム時刻 〜 予定時刻まで
+    if (now >= remindAt && now < meetingTime) {
+      fireMeetingAlarm(m);
+      m.notified = true;
+      dirty = true;
+    }
+    // 古い予定 (過去24h以上) は notified フラグ削除（メモリ節約）
+    if (now > meetingTime + 24 * 60 * 60 * 1000 && m.notified) {
+      // 翌日チェックのために残す。何もしない。
+    }
+  });
+  if (dirty) saveStateLocalOnly();
+}
+
+// 30秒ごとに確認 (バックグラウンド時はブラウザに throttle されるが許容)
+setInterval(checkAlarms, 30 * 1000);
+// ページ表示時にも即チェック
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') setTimeout(checkAlarms, 500);
 });
 
 /* ──────────────────────────────────────────────────────────
@@ -3104,6 +3263,19 @@ $('#btnSyncCalendar').addEventListener('click', () => {
 $('#btnSyncCalTop').addEventListener('click', () => syncCalendar());
 $('#btnLoadCalendars').addEventListener('click', loadCalendarList);
 
+$('#btnAlarmTest').addEventListener('click', async () => {
+  const ok = await requestNotificationPerm(true);
+  updateAlarmPermStatus();
+  // ダミー予定でテスト
+  const now = new Date();
+  fireMeetingAlarm({
+    id: 'test',
+    time: `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`,
+    title: '🔔 テストアラーム',
+    partner: '',
+  });
+});
+
 $('#btnRestoreHidden').addEventListener('click', () => {
   const hidden = state.settings.hiddenExternalIds || [];
   if (!hidden.length) return;
@@ -3243,6 +3415,8 @@ updateSyncBadge();
   if (state.settings.gasUrl && state.settings.gasAutoSync) {
     syncCalendar({ silent: true });
   }
+  // アラーム判定 (起動時)
+  setTimeout(checkAlarms, 1500);
 })();
 
 // Quick keyboard: focus quick-add with "n"
