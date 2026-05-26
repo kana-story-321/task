@@ -206,6 +206,16 @@
   .task .check:hover { border-color: var(--done); }
   .task.s-done .check { background: var(--done); border-color: var(--done); }
 
+  /* 新規追加時のフラッシュ */
+  .task.flash-new {
+    animation: flashNew 2.4s ease-out;
+  }
+  @keyframes flashNew {
+    0%   { background: #fff4d6; box-shadow: 0 0 0 4px rgba(255, 140, 66, 0.55); transform: translateX(-4px); }
+    20%  { transform: translateX(0); }
+    100% { background: var(--card); box-shadow: 0 0 0 0 rgba(255, 140, 66, 0); }
+  }
+
   .task .body { flex: 1; min-width: 0; }
   .task .title {
     font-size: 14px; font-weight: 600; color: var(--ink);
@@ -790,10 +800,10 @@
         <h2>タスク一覧 <span class="count" id="cntAllTasks">0</span></h2>
         <div class="actions">
           <select id="taskSortBy" class="btn sm">
-            <option value="default">並び順: 既定</option>
-            <option value="due">期日順</option>
+            <option value="default">並び順: 新しい順（既定）</option>
+            <option value="due">期日順（期日なしは最後）</option>
             <option value="project">案件順</option>
-            <option value="created">追加日順</option>
+            <option value="created">作成日順</option>
           </select>
         </div>
       </div>
@@ -1582,7 +1592,19 @@ function addTaskQuick(title) {
     toast(`✓ 追加しました ⚠ 現在のフィルタでは非表示`, 4500);
   } else {
     toast('✓ 追加しました');
+    flashTaskCard(t.id);
   }
+}
+
+// 追加直後のタスクへスクロール + ハイライト
+function flashTaskCard(id) {
+  setTimeout(() => {
+    const card = document.querySelector(`.task[data-id="${id}"]`);
+    if (!card) return;
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.classList.add('flash-new');
+    setTimeout(() => card.classList.remove('flash-new'), 2500);
+  }, 80);
 }
 
 function openTaskModal(task) {
@@ -1639,6 +1661,7 @@ function openTaskModal(task) {
       toast(`${isNew ? '追加' : '保存'}しましたが現在のフィルタ外（${reason}）`, 5000);
     } else {
       toast(isNew ? '追加しました' : '保存しました');
+      flashTaskCard(newData.id);
     }
   };
 
@@ -2342,18 +2365,24 @@ function renderTasks() {
 
   const sort = state.taskSort;
   if (sort === 'due') {
-    list.sort((a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999'));
+    // 期日あり (近い順) → 期日なし (新しく作った順)
+    list.sort((a, b) => {
+      const aHas = !!a.dueDate, bHas = !!b.dueDate;
+      if (aHas && !bHas) return -1;
+      if (!aHas && bHas) return 1;
+      if (!aHas && !bHas) return (b.createdAt || '').localeCompare(a.createdAt || '');
+      return a.dueDate.localeCompare(b.dueDate);
+    });
   } else if (sort === 'project') {
     const order = id => state.projects.findIndex(p => p.id === id);
     list.sort((a, b) => order(a.projectId) - order(b.projectId));
   } else if (sort === 'created') {
     list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   } else {
-    // default: today first, then mine, theirs, soon, idea, done
-    const ord = { mine: 1, theirs: 2, soon: 3, idea: 4, done: 5 };
+    // default: 新規追加が最上部 (createdAt 降順) + isToday を先頭に
     list.sort((a, b) => {
       if (a.isToday !== b.isToday) return a.isToday ? -1 : 1;
-      return (ord[a.status] || 99) - (ord[b.status] || 99);
+      return (b.createdAt || '').localeCompare(a.createdAt || '');
     });
   }
 
