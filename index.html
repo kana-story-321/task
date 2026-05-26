@@ -1443,6 +1443,12 @@ function statusLabel(s) {
     done: '✓ 完了',
   }[s] || s;
 }
+function statusColor(s) {
+  return {
+    mine: '#e74c3c', theirs: '#f39c12', soon: '#2980b9',
+    idea: '#9b59b6', done: '#27ae60',
+  }[s] || '#8a96a8';
+}
 function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c =>
@@ -1657,7 +1663,7 @@ function openTaskModal(task) {
     if (!isTaskVisibleInCurrentView(newData)) {
       const reason = (state.categoryFilter !== 'all' && state.categoryFilter !== (newData.category || 'none'))
         ? `ジャンル「${(CATEGORIES[state.categoryFilter] || {label:state.categoryFilter}).label || state.categoryFilter}」フィルタ中`
-        : `ステータス「${state.taskFilter}」フィルタ中`;
+        : `ステータス「${statusLabel(state.taskFilter) || state.taskFilter}」フィルタ中`;
       toast(`${isNew ? '追加' : '保存'}しましたが現在のフィルタ外（${reason}）`, 5000);
     } else {
       toast(isNew ? '追加しました' : '保存しました');
@@ -2173,8 +2179,9 @@ function renderToday() {
   const mtgs = state.meetings
     .filter(m => m.date === ymd(today()))
     .sort((a, b) => {
-      // 終日予定は先頭に
-      if (a.allDay !== b.allDay) return a.allDay ? -1 : 1;
+      // 終日予定は先頭に (undefined を false 扱いで正規化)
+      const aAll = !!a.allDay, bAll = !!b.allDay;
+      if (aAll !== bAll) return aAll ? -1 : 1;
       return (a.time || '').localeCompare(b.time || '');
     });
 
@@ -2590,7 +2597,7 @@ function previewCsv(text) {
       <tr>
         <td>${i+1}</td>
         <td>${esc(t.title)}</td>
-        <td><span class="chip s-${t.status}" style="font-size:10px">${esc(statusLabel(t.status))}</span></td>
+        <td><span class="chip" style="font-size:10px; background:${statusColor(t.status)}22; color:${statusColor(t.status)}; font-weight:700">${esc(statusLabel(t.status))}</span></td>
         <td>${cat?.icon || ''} ${esc(cat?.label || '')}</td>
         <td>${esc(t.dueDate || '—')}</td>
         <td>${esc(proj?.name || '—')}</td>
@@ -3496,7 +3503,7 @@ async function loadCalendarList() {
     state.settings.gasCalendarList = data.calendars || [];
     // 初回ならデフォルトカレンダーをチェック
     if (!state.settings.gasCalendarIds || !state.settings.gasCalendarIds.length) {
-      const def = data.calendars.find(c => c.isDefault);
+      const def = (data.calendars || []).find(c => c.isDefault);
       if (def) state.settings.gasCalendarIds = [def.id];
     }
     saveState();
@@ -3722,8 +3729,21 @@ $('#fileImport').addEventListener('change', (e) => {
 $('#btnReset').addEventListener('click', () => {
   if (!confirm('本当にすべてのデータを削除しますか？\nこの操作は取り消せません。')) return;
   if (!confirm('最終確認: すべて削除します。よろしいですか？')) return;
+  // クラウド側にも反映するか確認 (同期ON時のみ)
+  let alsoCloud = false;
+  if (state.settings.syncEnabled && state.settings.gasUrl) {
+    alsoCloud = confirm('クラウド側のデータも空にしますか？\n「キャンセル」を選ぶと、ローカルのみ削除されクラウドからは次回開いた時に再取得されます。');
+  }
   localStorage.removeItem(STORAGE_KEY);
   state = defaultState();
+  _pullDoneOnce = false; // 安全弁リセット
+  if (alsoCloud) {
+    // クラウドにも空状態を反映 (ユーザー意図なので force)
+    state._meta = { lastModified: Date.now() };
+    state.settings.gasUrl = $('#gasUrl').value.trim() || state.settings.gasUrl;
+    state.settings.syncEnabled = true;
+    pushToCloud({ silent: false, force: true });
+  }
   renderAll();
   closeModal('modalSettings');
   toast('削除しました');
