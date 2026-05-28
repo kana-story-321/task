@@ -1614,7 +1614,8 @@ function flashTaskCard(id) {
 }
 
 function openTaskModal(task) {
-  const isNew = !task;
+  // state に存在しないタスク（新規 or 事前入力済みの新規）は「新規」扱い
+  const isNew = !task || !state.tasks.some(x => x.id === task.id);
   task = task || newTask();
   $('#modalTaskTitle').textContent = isNew ? '＋ 新しいタスク' : 'タスクを編集';
   $('#taskId').value = task.id;
