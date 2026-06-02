@@ -3382,13 +3382,23 @@ async function pullFromCloud({ silent = true, force = false } = {}) {
     console.log('[sync] pull decision:',
       { remoteHas, localHas, remoteTs, localTs, force, pullDown, pushUp });
 
+    // hiddenExternalIds は両端末の union で集約 (片方の完了が、もう片方の古いリストで上書きされる事故を防止)
+    const mergedHidden = Array.from(new Set([
+      ...(state.settings.hiddenExternalIds || []),
+      ...((remote.settings || {}).hiddenExternalIds || []),
+    ]));
+    const hiddenSet = new Set(mergedHidden);
+
     if (pullDown) {
       // クラウド → 端末
       const preservedSettings = { ...state.settings };
       state = { ...defaultState(), ...remote };
       state.settings = { ...(remote.settings || {}), ...preservedSettings,
+        hiddenExternalIds: mergedHidden,   // ← union を強制反映
         lastPulledAt: Date.now(),
       };
+      // 非表示対象の予定をフィルタアウト
+      state.meetings = (state.meetings || []).filter(m => !m.externalId || !hiddenSet.has(m.externalId));
       state._meta = { ...(remote._meta || {}), lastModified: remoteTs || Date.now() };
       saveStateLocalOnly();
       renderAll();
@@ -3396,9 +3406,20 @@ async function pullFromCloud({ silent = true, force = false } = {}) {
       if (!silent) toast('☁ 取得しました ' + cnt);
       console.log('[sync] pulled:', cnt);
     } else if (pushUp) {
-      // 端末 → クラウド
+      // 端末 → クラウド (ローカルにも union された hidden を反映してから push)
+      state.settings.hiddenExternalIds = mergedHidden;
+      state.meetings = (state.meetings || []).filter(m => !m.externalId || !hiddenSet.has(m.externalId));
+      saveStateLocalOnly();
       await pushToCloud({ silent });
     } else {
+      // 変更なしでも hidden に差分があれば union を反映 (＝他端末の完了が即時反映)
+      if (mergedHidden.length > (state.settings.hiddenExternalIds || []).length) {
+        state.settings.hiddenExternalIds = mergedHidden;
+        state.meetings = (state.meetings || []).filter(m => !m.externalId || !hiddenSet.has(m.externalId));
+        saveStateLocalOnly();
+        renderAll();
+        console.log('[sync] merged hidden:', mergedHidden.length, 'items');
+      }
       if (!silent) toast('☁ 同期済（変更なし）');
     }
     state.settings.lastPulledAt = Date.now();
