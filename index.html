@@ -3384,21 +3384,50 @@ async function pullFromCloud({ silent = true, force = false } = {}) {
     console.log('[sync] pull decision:',
       { remoteHas, localHas, remoteTs, localTs, force, pullDown, pushUp });
 
-    // hiddenExternalIds は両端末の union で集約 (片方の完了が、もう片方の古いリストで上書きされる事故を防止)
+    // hiddenExternalIds は両端末の union で集約
     const mergedHidden = Array.from(new Set([
       ...(state.settings.hiddenExternalIds || []),
       ...((remote.settings || {}).hiddenExternalIds || []),
     ]));
     const hiddenSet = new Set(mergedHidden);
 
+    // 設定マージ: 端末固有 / 共有 で扱いを分ける
+    // (空ローカルがクラウドの値を上書きするバグの修正: gasCalendarIds 等)
+    const remoteSettings = remote.settings || {};
+    const localSettings  = state.settings || {};
+    // 端末固有 (端末ごとに違ってOK・ローカル優先)
+    const DEVICE_KEYS = ['gasUrl', 'syncEnabled', 'gasAutoSync', 'alarmEnabled',
+                         'alarmMinutesBefore', 'lastPushedAt', 'lastPulledAt', 'gasLastSync'];
+    // 共有 (両端末で同じ値にしたい・ローカル空ならクラウド採用)
+    const SHARED_KEYS_NONEMPTY = ['gasCalendarIds', 'gasCalendarList'];
+    function buildMergedSettings() {
+      const m = { ...remoteSettings };  // ベースはクラウド
+      DEVICE_KEYS.forEach(k => {
+        if (localSettings[k] !== undefined) m[k] = localSettings[k];
+      });
+      SHARED_KEYS_NONEMPTY.forEach(k => {
+        const lv = localSettings[k];
+        const isEmpty = lv === undefined || lv === null || lv === '' ||
+                        (Array.isArray(lv) && lv.length === 0);
+        if (!isEmpty) m[k] = lv;  // ローカルに有意な値があれば採用、なければクラウドのまま
+      });
+      // ローカルにあるその他のキー (reminderTemplate等) もローカル優先
+      Object.keys(localSettings).forEach(k => {
+        if (DEVICE_KEYS.includes(k) || SHARED_KEYS_NONEMPTY.includes(k) || k === 'hiddenExternalIds') return;
+        if (localSettings[k] !== undefined && localSettings[k] !== null && localSettings[k] !== '') {
+          m[k] = localSettings[k];
+        }
+      });
+      m.hiddenExternalIds = mergedHidden;
+      m.lastPulledAt = Date.now();
+      return m;
+    }
+
     if (pullDown) {
       // クラウド → 端末
-      const preservedSettings = { ...state.settings };
+      const mergedSettings = buildMergedSettings();
       state = { ...defaultState(), ...remote };
-      state.settings = { ...(remote.settings || {}), ...preservedSettings,
-        hiddenExternalIds: mergedHidden,   // ← union を強制反映
-        lastPulledAt: Date.now(),
-      };
+      state.settings = mergedSettings;
       // 非表示対象の予定をフィルタアウト
       state.meetings = (state.meetings || []).filter(m => !m.externalId || !hiddenSet.has(m.externalId));
       state._meta = { ...(remote._meta || {}), lastModified: remoteTs || Date.now() };
@@ -3406,10 +3435,11 @@ async function pullFromCloud({ silent = true, force = false } = {}) {
       renderAll();
       const cnt = `タスク${(state.tasks||[]).length} / 案件${(state.projects||[]).length} / 予定${(state.meetings||[]).length}`;
       if (!silent) toast('☁ 取得しました ' + cnt);
-      console.log('[sync] pulled:', cnt);
+      console.log('[sync] pulled:', cnt, 'gasCalendarIds=', mergedSettings.gasCalendarIds);
     } else if (pushUp) {
-      // 端末 → クラウド (ローカルにも union された hidden を反映してから push)
-      state.settings.hiddenExternalIds = mergedHidden;
+      // 端末 → クラウド: 共有設定がローカルで空なら、push 前にクラウドから補完
+      const mergedSettings = buildMergedSettings();
+      state.settings = mergedSettings;
       state.meetings = (state.meetings || []).filter(m => !m.externalId || !hiddenSet.has(m.externalId));
       saveStateLocalOnly();
       await pushToCloud({ silent });
@@ -3565,7 +3595,12 @@ function renderCalendarPicker() {
     `;
   }).join('');
 
+  const warning = selCount === 0
+    ? `<div style="background:#fde8e8; color:var(--danger); padding:8px 10px; border-radius:6px; font-size:12px; font-weight:700; margin-bottom:6px">
+         ⚠ カレンダー未選択。同期しても予定が取得されません。「すべて選択」推奨
+       </div>` : '';
   box.innerHTML = `
+    ${warning}
     <div class="cal-toolbar">
       <span>${cals.length} 件中 <b>${selCount}</b> 件選択中</span>
       <span>
@@ -3609,7 +3644,11 @@ async function syncCalendar({ silent = false } = {}) {
     const u = new URL(url);
     u.searchParams.set('days', String(days));
     const ids = state.settings.gasCalendarIds || [];
-    if (ids.length) u.searchParams.set('calendarIds', ids.join(','));
+    if (ids.length) {
+      u.searchParams.set('calendarIds', ids.join(','));
+    } else if (!silent) {
+      toast('⚠ 取込カレンダー未選択。全カレンダーから取得します', 3500);
+    }
     const res = await fetch(u.toString(), { method: 'GET', redirect: 'follow' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();

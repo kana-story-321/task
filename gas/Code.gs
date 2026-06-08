@@ -152,7 +152,8 @@ function getEvents(params) {
       catch (_) { return null; }
     }).filter(Boolean);
   } else {
-    calendars = [CalendarApp.getDefaultCalendar()];
+    // カレンダー未指定: 全カレンダーから取得 (取込漏れ防止)
+    calendars = CalendarApp.getAllCalendars();
   }
 
   const start = new Date(); start.setHours(0, 0, 0, 0);
