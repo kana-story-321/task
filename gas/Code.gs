@@ -51,7 +51,8 @@ function _getCalendar(calId) {
 }
 
 function cancelReminder(body) {
-  const eventId = body.eventId;
+  // 繰り返し予定のユニークID（baseId::yyyyMMddHHmm）から本来のイベントIDを取り出す
+  const eventId = String(body.eventId || '').split('::')[0];
   if (!eventId) return json({ ok: false, error: 'eventId required' });
   const calId = body.calendarId || 'primary';
   const cal = _getCalendar(calId);
@@ -63,7 +64,7 @@ function cancelReminder(body) {
 }
 
 function setReminder(body) {
-  const eventId = body.eventId;
+  const eventId = String(body.eventId || '').split('::')[0];
   if (!eventId) return json({ ok: false, error: 'eventId required' });
   const calId = body.calendarId || 'primary';
   const minutes = Number(body.minutes) || 10;
@@ -192,8 +193,13 @@ function getEvents(params) {
       const partner = guests.length ? (guests[0].name || guests[0].email) : '';
       const email = guests.length ? guests[0].email : '';
 
+      // 繰り返し予定（朝礼・定例など）は全回が同じ getId() を返すため、
+      // 開始日時を付けて回ごとにユニークな ID にする（同期で1件に潰れるのを防止）
+      const occId = ev.getId() + '::' + Utilities.formatDate(st, tz, 'yyyyMMddHHmm');
+
       all.push({
-        id: ev.getId(),
+        id: occId,
+        seriesId: ev.getId(),
         calendarId: calId,
         calendarName: calName,
         date: Utilities.formatDate(st, tz, 'yyyy-MM-dd'),

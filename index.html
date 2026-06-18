@@ -478,6 +478,13 @@
   .hero .summary {
     margin-top: 10px; font-size: 13px; opacity: 0.92; line-height: 1.55;
   }
+  .hero .quote {
+    margin-top: 12px; padding: 10px 12px;
+    background: rgba(255,255,255,0.14); border-radius: 10px;
+    border-left: 3px solid rgba(255,255,255,0.6);
+  }
+  .hero .quote .q-text { font-size: 13px; font-weight: 700; line-height: 1.6; }
+  .hero .quote .q-author { display: block; margin-top: 5px; font-size: 11px; opacity: 0.85; text-align: right; }
   .hero .quick-stats {
     display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
     margin-top: 12px;
@@ -693,7 +700,7 @@
       <span class="ico">≡</span><span>タスク</span>
     </button>
     <button class="nav-btn" data-page="projects">
-      <span class="ico">▦</span><span>案件</span>
+      <span class="ico">▦</span><span>プロジェクト</span>
     </button>
     <button class="nav-btn" data-page="kpi">
       <span class="ico">↗</span><span>KPI</span>
@@ -706,6 +713,7 @@
       <div class="date" id="todayDate">—</div>
       <div class="greet" id="todayGreet">おはようございます</div>
       <div class="summary" id="todaySummary">—</div>
+      <div class="quote" id="todayQuote"></div>
       <div class="quick-stats">
         <div class="qs"><div class="n" id="qsToday">0</div><div class="l">今日やる</div></div>
         <div class="qs"><div class="n" id="qsMine">0</div><div class="l">マイボール</div></div>
@@ -731,6 +739,11 @@
       <div class="section-head">
         <h2>🎯 今日やる <span class="count" id="cntTodayTasks">0</span></h2>
       </div>
+      <form class="quick-add" id="quickAddTodayForm">
+        <input type="text" id="quickAddTodayInput" placeholder="今日やるタスクを入力して Enter（例: 提案資料の修正）">
+        <button type="submit" title="今日やるに追加">＋</button>
+        <button type="button" id="btnAddTodayDetailed" class="qa-secondary" title="詳細入力">📝</button>
+      </form>
       <div id="todayTasksList"></div>
     </div>
 
@@ -802,7 +815,7 @@
           <select id="taskSortBy" class="btn sm">
             <option value="default">並び順: 新しい順（既定）</option>
             <option value="due">期日順（期日なしは最後）</option>
-            <option value="project">案件順</option>
+            <option value="project">プロジェクト順</option>
             <option value="created">作成日順</option>
           </select>
         </div>
@@ -815,9 +828,9 @@
   <div id="page-projects" class="page">
     <div class="section">
       <div class="section-head">
-        <h2>進行中の案件 <span class="count" id="cntProjects">0</span></h2>
+        <h2>進行中のプロジェクト <span class="count" id="cntProjects">0</span></h2>
         <div class="actions">
-          <button class="btn primary sm" id="btnAddProject">＋ 案件追加</button>
+          <button class="btn primary sm" id="btnAddProject">＋ プロジェクト追加</button>
         </div>
       </div>
       <div id="projectsList"></div>
@@ -834,9 +847,9 @@
         </div>
       </div>
       <div class="help" style="margin-bottom:10px">
-        📊 = 現在値をすばやく更新 / ✎ = 案件編集（KPI追加・削除はこちら）<br>
-        進捗 ％ = 現在値 ÷ 目標値、期待値（縦線）は案件期間の経過率、遅れ ％ = 期待 − 進捗<br>
-        新規KPIを追加するには「案件」タブで案件を編集 → 「＋ KPIを追加」
+        📊 = 現在値をすばやく更新 / ✎ = プロジェクト編集（KPI追加・削除はこちら）<br>
+        進捗 ％ = 現在値 ÷ 目標値、期待値（縦線）はプロジェクト期間の経過率、遅れ ％ = 期待 − 進捗<br>
+        新規KPIを追加するには「プロジェクト」タブでプロジェクトを編集 → 「＋ KPIを追加」
       </div>
       <div id="kpiList"></div>
     </div>
@@ -878,7 +891,7 @@
 
     <div class="row row-2">
       <div class="field">
-        <label>案件</label>
+        <label>プロジェクト</label>
         <select id="taskProject"><option value="">なし</option></select>
       </div>
       <div class="field">
@@ -914,11 +927,11 @@
 <!-- ─────── MODAL: Project ─────── -->
 <div class="modal-bg" id="modalProject">
   <div class="modal">
-    <h3 id="modalProjectTitle">案件</h3>
+    <h3 id="modalProjectTitle">プロジェクト</h3>
     <input type="hidden" id="projectId">
 
     <div class="field">
-      <label>案件名</label>
+      <label>プロジェクト名</label>
       <input type="text" id="projectName" placeholder="例: 新サービス導入PJ">
     </div>
 
@@ -1046,7 +1059,7 @@
     <div class="help" style="margin-bottom:10px; line-height:1.7">
       <b>ヘッダ行（1行目）に項目名</b>を入れてください。順番は自由・列の追加もOK・不要な列は省略可。<br>
       認識する項目名: <span class="kbd">タイトル</span> <span class="kbd">ステータス</span>
-      <span class="kbd">ジャンル</span> <span class="kbd">期日</span> <span class="kbd">案件</span>
+      <span class="kbd">ジャンル</span> <span class="kbd">期日</span> <span class="kbd">プロジェクト</span>
       <span class="kbd">相手先</span> <span class="kbd">今日</span> <span class="kbd">メモ</span>
       <br>
       ステータス候補: <span class="kbd">マイボール</span> <span class="kbd">相手待ち</span>
@@ -1062,7 +1075,7 @@
 
     <div class="field">
       <label>または、CSV を直接貼り付け</label>
-      <textarea id="csvPasteArea" rows="6" style="font-family:'Menlo',monospace; font-size:12px" placeholder="タイトル,ステータス,期日,案件,相手先,今日,メモ&#10;提案資料修正,マイボール,2026-05-25,新サービス導入PJ,,はい,要レビュー"></textarea>
+      <textarea id="csvPasteArea" rows="6" style="font-family:'Menlo',monospace; font-size:12px" placeholder="タイトル,ステータス,期日,プロジェクト,相手先,今日,メモ&#10;提案資料修正,マイボール,2026-05-25,新サービス導入PJ,,はい,要レビュー"></textarea>
       <button class="btn sm" id="btnParseCsv" type="button" style="margin-top:6px">🔍 プレビュー</button>
     </div>
 
@@ -1825,7 +1838,7 @@ function projectDelay(p) {
 function openProjectModal(proj) {
   const isNew = !proj;
   proj = proj || newProject();
-  $('#modalProjectTitle').textContent = isNew ? '＋ 新しい案件' : '案件を編集';
+  $('#modalProjectTitle').textContent = isNew ? '＋ 新しいプロジェクト' : 'プロジェクトを編集';
   $('#projectId').value = proj.id;
   $('#projectName').value = proj.name;
   $('#projectDesc').value = proj.description || '';
@@ -1866,7 +1879,7 @@ function openProjectModal(proj) {
       status: $('#projectStatus').value,
       kpis: readKpiEditor(),
     };
-    if (!newData.name) { toast('案件名を入力してください'); return; }
+    if (!newData.name) { toast('プロジェクト名を入力してください'); return; }
     if (isNew) state.projects.unshift(newData);
     else {
       const i = state.projects.findIndex(x => x.id === proj.id);
@@ -1875,11 +1888,11 @@ function openProjectModal(proj) {
     saveState();
     closeModal('modalProject');
     renderAll();
-    toast(isNew ? '案件を追加しました' : '保存しました');
+    toast(isNew ? 'プロジェクトを追加しました' : '保存しました');
   };
 
   $('#projectDelete').onclick = () => {
-    if (!confirm(`「${proj.name}」を削除しますか？\n紐付くタスクは「案件なし」に変更されます。`)) return;
+    if (!confirm(`「${proj.name}」を削除しますか？\n紐付くタスクは「プロジェクトなし」に変更されます。`)) return;
     state.projects = state.projects.filter(x => x.id !== proj.id);
     state.tasks.forEach(t => { if (t.projectId === proj.id) t.projectId = ''; });
     saveState();
@@ -2166,14 +2179,60 @@ function isOverdue(t) {
   return parseYmd(t.dueDate) < today();
 }
 
+// 毎日少し背中を押してくれるビジネス名言（日替わりで表示）
+const BUSINESS_QUOTES = [
+  { t: 'やってみせ、言って聞かせて、させてみせ、褒めてやらねば人は動かじ。', a: '山本五十六' },
+  { t: '優れた仕事をする唯一の方法は、自分のやっていることを愛することだ。', a: 'スティーブ・ジョブズ' },
+  { t: '未来を予測する最善の方法は、それを創り出すことだ。', a: 'ピーター・ドラッカー' },
+  { t: '困難の中にこそ、チャンスがある。', a: 'アルベルト・アインシュタイン' },
+  { t: '成功とは、失敗を重ねても情熱を失わないことである。', a: 'ウィンストン・チャーチル' },
+  { t: '最大のリスクは、リスクをまったく取らないことだ。', a: 'マーク・ザッカーバーグ' },
+  { t: '為せば成る、為さねば成らぬ何事も。', a: '上杉鷹山' },
+  { t: '小さなことを積み重ねるのが、とんでもないところへ行くただ一つの道。', a: 'イチロー' },
+  { t: '今日できることを明日に延ばすな。', a: 'ベンジャミン・フランクリン' },
+  { t: 'できると思えばできる、できないと思えばできない。', a: 'ヘンリー・フォード' },
+  { t: 'やり遂げるまでは、いつも不可能に見えるものだ。', a: 'ネルソン・マンデラ' },
+  { t: 'チャンスは、準備された心にのみ訪れる。', a: 'ルイ・パスツール' },
+  { t: '我々は、自分が繰り返し行っていることの結果である。', a: 'アリストテレス' },
+  { t: '行動を伴わないビジョンは、ただの夢にすぎない。', a: 'ジョエル・バーカー' },
+  { t: '一歩一歩、着実に。それが目標達成の唯一の道だ。', a: 'マイケル・ジョーダン' },
+  { t: '変化を望むなら、自らがその変化になりなさい。', a: 'マハトマ・ガンジー' },
+  { t: '天才とは、努力し続けられる才能のことである。', a: 'アルベルト・アインシュタイン' },
+  { t: '決して屈するな。決して、決して、決して屈するな。', a: 'ウィンストン・チャーチル' },
+  { t: 'ビジネスの目的は、顧客を創造することである。', a: 'ピーター・ドラッカー' },
+  { t: 'リーダーシップとは、夢を現実に変える力である。', a: 'ウォーレン・ベニス' },
+  { t: '継続は力なり。', a: 'ことわざ' },
+  { t: '七転び八起き。', a: 'ことわざ' },
+  { t: '思い立ったが吉日。', a: 'ことわざ' },
+  { t: '百里を行く者は九十里を半ばとす。', a: '戦国策' },
+  { t: '迷ったときは、より難しい道を選べ。', a: '格言' },
+  { t: 'やらずに後悔するより、やって後悔するほうがいい。', a: '格言' },
+  { t: '努力する者が必ず報われるとは限らない。だが成功した者は皆、努力している。', a: '格言' },
+  { t: '強い者が生き残るのではなく、変化に適応した者が生き残る。', a: 'ダーウィンに由来する言葉' },
+  { t: '人生は近くで見れば悲劇だが、遠くから見れば喜劇である。', a: 'チャールズ・チャップリン' },
+  { t: '明日死ぬかのように生きよ。永遠に生きるかのように学べ。', a: 'マハトマ・ガンジー' },
+  { t: '夢を見るからこそ、人生は輝く。', a: 'モーツァルト' },
+];
+function dayOfYear(d) {
+  const start = new Date(d.getFullYear(), 0, 0);
+  return Math.floor((d - start) / 86400000);
+}
+function renderDailyQuote(now) {
+  const el = $('#todayQuote');
+  if (!el || !BUSINESS_QUOTES.length) return;
+  const q = BUSINESS_QUOTES[dayOfYear(now) % BUSINESS_QUOTES.length];
+  el.innerHTML = `<span class="q-text">“${esc(q.t)}”</span><span class="q-author">— ${esc(q.a)}</span>`;
+}
+
 function renderToday() {
   const now = new Date();
   const h = now.getHours();
   const greet = h < 11 ? 'おはようございます'
-              : h < 18 ? 'お疲れさまです'
+              : h < 18 ? 'こんにちは'
               : 'こんばんは';
   $('#todayDate').textContent = fmtJpDateLong(now);
   $('#todayGreet').textContent = greet + '。';
+  renderDailyQuote(now);
 
   const filtTasks = applyCategoryFilter(state.tasks);
   const todayList = filtTasks.filter(t => t.status !== 'done' && (t.isToday || isDueToday(t) || isOverdue(t)));
@@ -2432,11 +2491,34 @@ $('#btnAddDetailed').addEventListener('click', () => {
 
 $('#btnImportCsv').addEventListener('click', () => openCsvModal());
 
+// 「今日」ページのクイック追加（追加したタスクは「今日やる」に入る）
+function addTodayTaskQuick(title) {
+  const t = newTask({ title: title.trim(), isToday: true });
+  if (!t.title) return;
+  state.tasks.unshift(t);
+  saveState();
+  renderAll();
+  toast('✓ 今日やるに追加しました');
+  flashTaskCard(t.id);
+}
+$('#quickAddTodayForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const v = $('#quickAddTodayInput').value;
+  if (!v.trim()) return;
+  addTodayTaskQuick(v);
+  $('#quickAddTodayInput').value = '';
+});
+$('#btnAddTodayDetailed').addEventListener('click', () => {
+  const title = $('#quickAddTodayInput').value.trim();
+  openTaskModal(newTask({ title, isToday: true }));
+  $('#quickAddTodayInput').value = '';
+});
+
 /* ──────────────────────────────────────────────────────────
  * CSV IMPORT
  * ────────────────────────────────────────────────────────── */
 const CSV_SAMPLE =
-`タイトル,ステータス,ジャンル,期日,案件,相手先,今日,メモ
+`タイトル,ステータス,ジャンル,期日,プロジェクト,相手先,今日,メモ
 提案資料の修正,マイボール,Tack,2026-05-25,新サービス導入PJ,,はい,要レビュー
 見積もり回答待ち,相手待ち,Tack,2026-05-23,新サービス導入PJ,◯◯商事 山田様,,担当へ確認連絡済
 病院の予約,早くやりたい,Private,,,,,
@@ -2476,7 +2558,7 @@ const HEADER_MAP = {
   'ステータス': 'status', '状態': 'status', 'status': 'status',
   'ジャンル': 'category', '分類': 'category', 'カテゴリ': 'category', 'category': 'category',
   '期日': 'dueDate', '期限': 'dueDate', '締切': 'dueDate', 'due': 'dueDate', 'duedate': 'dueDate',
-  '案件': 'projectName', 'プロジェクト': 'projectName', 'project': 'projectName',
+  'プロジェクト': 'projectName', '案件': 'projectName', 'project': 'projectName',
   '相手先': 'partner', '相手': 'partner', 'partner': 'partner',
   '今日': 'isToday', '今日やる': 'isToday', 'today': 'isToday',
   'メモ': 'notes', '備考': 'notes', 'notes': 'notes',
@@ -2549,7 +2631,7 @@ function csvRowsToTasks(rows) {
     if (obj.projectName) {
       const found = state.projects.find(p => p.name === obj.projectName);
       if (found) projectId = found.id;
-      else errors.push(`${i+1}行目: 案件「${obj.projectName}」が見つかりません (なし扱い)`);
+      else errors.push(`${i+1}行目: プロジェクト「${obj.projectName}」が見つかりません (なし扱い)`);
     }
 
     const rawCat = (obj.category || '').trim();
@@ -2625,7 +2707,7 @@ function previewCsv(text) {
             <th style="padding:6px 8px; text-align:left">ステータス</th>
             <th style="padding:6px 8px; text-align:left">ジャンル</th>
             <th style="padding:6px 8px; text-align:left">期日</th>
-            <th style="padding:6px 8px; text-align:left">案件</th>
+            <th style="padding:6px 8px; text-align:left">プロジェクト</th>
             <th style="padding:6px 8px; text-align:left">相手</th>
             <th style="padding:6px 8px; text-align:center">今日</th>
           </tr>
@@ -2691,7 +2773,7 @@ function renderProjects() {
   $('#cntProjects').textContent = projects.length;
   const box = $('#projectsList');
   if (!projects.length) {
-    box.innerHTML = `<div class="empty">該当する案件はありません。${cat !== 'all' ? '上のフィルタを変更するか、' : ''}「＋ 案件追加」から開始してください。</div>`;
+    box.innerHTML = `<div class="empty">該当するプロジェクトはありません。${cat !== 'all' ? '上のフィルタを変更するか、' : ''}「＋ プロジェクト追加」から開始してください。</div>`;
     return;
   }
 
@@ -2814,7 +2896,7 @@ function renderProjectCard(p) {
           ${p.description ? `<div class="proj-desc">${esc(p.description)}</div>` : ''}
         </div>
         <div class="proj-actions">
-          <button class="icon-btn" data-prj-add="${p.id}" title="この案件にタスクを追加">＋</button>
+          <button class="icon-btn" data-prj-add="${p.id}" title="このプロジェクトにタスクを追加">＋</button>
           <button class="icon-btn" data-prj-edit="${p.id}" title="編集">✎</button>
         </div>
       </div>
@@ -2864,7 +2946,7 @@ document.addEventListener('click', (e) => {
   }
 });
 
-// 案件カードの色変更（input[type=color] の change）
+// プロジェクトカードの色変更（input[type=color] の change）
 document.addEventListener('change', (e) => {
   const pid = e.target.dataset?.prjColor;
   if (pid) {
@@ -2889,7 +2971,7 @@ function renderKpi() {
   $('#cntKpis').textContent = rows.length;
 
   if (!rows.length) {
-    $('#kpiList').innerHTML = `<div class="empty">KPIはまだ登録されていません。案件編集画面で追加してください。</div>`;
+    $('#kpiList').innerHTML = `<div class="empty">KPIはまだ登録されていません。プロジェクト編集画面で追加してください。</div>`;
     return;
   }
   // sort by delay descending (worst first)
@@ -2925,7 +3007,7 @@ function renderKpi() {
               <span class="target">/ ${formatNum(t)} ${esc(k.unit||'')}</span>
             </div>
             <button class="icon-btn" data-kpi-quick="${esc(p.id)}|${kIdx}" title="現在値をすばやく更新" style="width:30px; height:30px">📊</button>
-            <button class="icon-btn" data-kpi-edit="${esc(p.id)}" title="この案件のKPIを編集" style="width:30px; height:30px">✎</button>
+            <button class="icon-btn" data-kpi-edit="${esc(p.id)}" title="このプロジェクトのKPIを編集" style="width:30px; height:30px">✎</button>
           </div>
         </div>
         <div class="kpi-bar">
@@ -3433,7 +3515,7 @@ async function pullFromCloud({ silent = true, force = false } = {}) {
       state._meta = { ...(remote._meta || {}), lastModified: remoteTs || Date.now() };
       saveStateLocalOnly();
       renderAll();
-      const cnt = `タスク${(state.tasks||[]).length} / 案件${(state.projects||[]).length} / 予定${(state.meetings||[]).length}`;
+      const cnt = `タスク${(state.tasks||[]).length} / プロジェクト${(state.projects||[]).length} / 予定${(state.meetings||[]).length}`;
       if (!silent) toast('☁ 取得しました ' + cnt);
       console.log('[sync] pulled:', cnt, 'gasCalendarIds=', mergedSettings.gasCalendarIds);
     } else if (pushUp) {
@@ -3886,7 +3968,7 @@ function bootstrapDemo() {
 
   state.projects = [
     {
-      id: uid(), name: 'サンプル案件: 新サービス導入', description: '初回サンプル。編集または削除してください。',
+      id: uid(), name: 'サンプルプロジェクト: 新サービス導入', description: '初回サンプル。編集または削除してください。',
       color: '#2d5a8f', startDate: inDays(-20), endDate: inDays(40), status: 'active',
       progressOverride: null, createdAt: new Date().toISOString(),
       kpis: [
